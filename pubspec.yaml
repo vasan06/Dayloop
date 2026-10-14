@@ -1,0 +1,58 @@
+name: nexora
+description: "NEXORA — Personal Productivity App"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_bloc: ^9.1.0
+  equatable: ^2.0.7
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Networking
+  dio: ^5.7.0
+
+  # Local secure storage (for auth tokens and keys)
+  flutter_secure_storage: ^9.2.4
+
+  # Local database (sqflite for Android/Windows local DB)
+  sqflite: ^2.4.2
+  path: ^1.9.1
+
+  # Shared preferences (non-sensitive lightweight settings)
+  shared_preferences: ^2.3.5
+
+  # UUID generation
+  uuid: ^4.5.1
+
+  # Date/time formatting
+  intl: ^0.20.1
+
+  # JSON serialization helpers
+  json_annotation: ^4.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  bloc_test: ^10.0.0
+  mocktail: ^1.0.4
+
+  # Code generation (for json_serializable)
+  build_runner: ^2.4.13
+  json_serializable: ^6.9.0
+
+flutter:
+  uses-material-design: true
