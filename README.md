@@ -30,12 +30,14 @@ DayLoop is a personal-first life workspace combining Notion-inspired knowledge m
 2. Copy root `.env.example` to `.env`. Set `DATABASE_URL` to the password and database created above. Keep `DAYLOOP_AUTH_MODE=development` only for local development.
 3. Run PowerShell: `cd D:\dayloop\backend; .\run_local.ps1`. This creates a Python environment if needed, installs dependencies, applies pending migrations and starts the API at `http://127.0.0.1:8000`.
 4. In a second terminal: `cd D:\dayloop; npm install; npm run dev`. Open the Vite URL shown in the terminal, normally `http://localhost:5173`.
-5. Optional in-app reminder worker: in another terminal run `cd D:\dayloop\backend; .\run_worker.ps1`.
+5. Copy `frontend/.env.example` to `frontend/.env` and add your Firebase web app settings to enable email/password and Google sign-in. For local API-only testing, use **Continue with local development identity** on the sign-in page.
+6. Optional in-app reminder worker: in another terminal run `cd D:\dayloop\backend; .\run_worker.ps1`.
 
 ## Production authentication
-- Create a Firebase project on the no-cost Spark plan and enable Email/Password authentication.
+- Create a Firebase project on the no-cost Spark plan and enable Email/Password and Google authentication under **Authentication → Sign-in method**.
 - Copy the Firebase web configuration into `frontend/.env.local` using `frontend/.env.example`.
 - Configure `FIREBASE_PROJECT_ID`, `GOOGLE_APPLICATION_CREDENTIALS` and `DAYLOOP_AUTH_MODE=firebase` on the API host.
+- New email and Google accounts complete a DayLoop profile (name, unique username, age and role) before the workspace opens.
 - Never commit service-account credentials or `.env` files. Development identity is disabled when `DAYLOOP_ENV=production`.
 
 ## Checks

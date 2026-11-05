@@ -4,7 +4,10 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
-type Task = { status: string; created_at?: string; completed_at?: string | null };
+type Task = { status: string; project_id?: string | null; created_at?: string; completed_at?: string | null };
+type Project = { id: string; name: string };
+type Note = { updated_at: string };
+type CalendarEvent = { start_at: string };
 type Habit = { id: string; name: string; consistency_30d: number; current_streak: number; completed_today: boolean };
 type Transaction = { amount: string | number; transaction_type: string; transaction_date: string; currency: string };
 type Goal = { id: string; title: string; current_value: number; target_value?: number; unit?: string; status: string };
@@ -110,6 +113,76 @@ export function GoalAnalytics({ goals }: { goals: Goal[] }) {
   const active = goals.filter((goal) => goal.status === "active" && Number(goal.target_value) > 0);
   return <Panel eyebrow="MEASURABLE PROGRESS" title="Goal completion">
     {active.length ? <ResponsiveContainer width="100%" height={Math.max(210, active.length * 48)}><BarChart data={active} layout="vertical" margin={{ top: 8, right: 20, left: 8, bottom: 8 }}><CartesianGrid stroke="#eee5dc" strokeDasharray="3 5" horizontal={false} /><XAxis type="number" domain={[0, 100]} tick={axisStyle} axisLine={false} tickLine={false} unit="%" /><YAxis type="category" dataKey="title" width={125} tick={axisStyle} axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} formatter={(value) => [Math.round(Number(value)) + "%", "Complete"]} /><Bar dataKey={(goal: Goal) => Math.min(100, Math.max(0, Number(goal.current_value) / Number(goal.target_value) * 100))} name="Complete" fill="#a996c7" radius={[0, 6, 6, 0]} barSize={17} /></BarChart></ResponsiveContainer> : <EmptyChart children="Add a target value to a goal to make its progress measurable." /> }
+  </Panel>;
+}
+
+export function TaskAnalytics({ tasks }: { tasks: Task[] }) {
+  const weekly = useMemo(() => buildWeeklyActivity(tasks), [tasks]);
+  return <Panel eyebrow="TASK MOMENTUM · LAST 7 DAYS" title="Tasks created and completed">
+    {tasks.length ? <ResponsiveContainer width="100%" height={210}><BarChart data={weekly} margin={{ top: 10, right: 10, left: -22, bottom: 0 }}><CartesianGrid stroke="#eee5dc" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="day" tick={axisStyle} axisLine={false} tickLine={false} /><YAxis allowDecimals={false} tick={axisStyle} axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} /><Bar dataKey="created" name="Created" fill="#a996c7" radius={[4, 4, 0, 0]} /><Bar dataKey="completed" name="Completed" fill="#8c9a7b" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart children="Add tasks to see your weekly progress." /> }
+  </Panel>;
+}
+
+export function ProjectAnalytics({ projects, tasks }: { projects: Project[]; tasks: Task[] }) {
+  const data = projects.slice(0, 8).map((project) => {
+    const projectTasks = tasks.filter((task) => task.project_id === project.id);
+    const completed = projectTasks.filter((task) => task.status === "completed").length;
+    return {
+      name: project.name,
+      completed,
+      remaining: projectTasks.length - completed,
+      total: projectTasks.length,
+    };
+  });
+  return <Panel eyebrow="PROJECT DELIVERY · LIVE" title="Work completed by project">
+    {projects.length ? <ResponsiveContainer width="100%" height={Math.max(210, data.length * 38)}><BarChart data={data} layout="vertical" margin={{ top: 8, right: 18, left: 8, bottom: 8 }}><CartesianGrid stroke="#eee5dc" strokeDasharray="3 5" horizontal={false} /><XAxis type="number" allowDecimals={false} tick={axisStyle} axisLine={false} tickLine={false} /><YAxis type="category" dataKey="name" width={112} tick={axisStyle} axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} /><Bar dataKey="completed" name="Completed" stackId="tasks" fill="#8c9a7b" /><Bar dataKey="remaining" name="Remaining" stackId="tasks" fill="#df785f" radius={[0, 5, 5, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart children="Create a project and assign tasks to track delivery." /> }
+  </Panel>;
+}
+
+export function NotesAnalytics({ notes }: { notes: Note[] }) {
+  const data = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (6 - index));
+      const key = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+      return { key, day: date.toLocaleDateString("en", { weekday: "short" }), updated: 0 };
+    });
+    const lookup = new Map(days.map((day) => [day.key, day]));
+    notes.forEach((note) => {
+      const day = lookup.get(note.updated_at.slice(0, 10));
+      if (day) day.updated += 1;
+    });
+    return days;
+  }, [notes]);
+  return <Panel eyebrow="KNOWLEDGE · LAST 7 DAYS" title="Pages you've revisited">
+    {notes.length ? <ResponsiveContainer width="100%" height={190}><LineChart data={data} margin={{ top: 10, right: 10, left: -22, bottom: 0 }}><CartesianGrid stroke="#eee5dc" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="day" tick={axisStyle} axisLine={false} tickLine={false} /><YAxis allowDecimals={false} tick={axisStyle} axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} /><Line type="monotone" dataKey="updated" name="Pages updated" stroke="#a996c7" strokeWidth={3} dot={{ r: 3, fill: "#69465f" }} activeDot={{ r: 5 }} /></LineChart></ResponsiveContainer> : <EmptyChart children="Create pages to build your personal knowledge history." /> }
+  </Panel>;
+}
+
+export function CalendarAnalytics({ events }: { events: CalendarEvent[] }) {
+  const data = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (today.getDay() + 6) % 7);
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      const key = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+      return { key, day: date.toLocaleDateString("en", { weekday: "short" }), events: 0 };
+    });
+    const lookup = new Map(days.map((day) => [day.key, day]));
+    events.forEach((event) => {
+      const date = new Date(event.start_at);
+      const key = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+      const day = lookup.get(key);
+      if (day) day.events += 1;
+    });
+    return days;
+  }, [events]);
+  return <Panel eyebrow="YOUR WEEK · SCHEDULE" title="Planned time">
+    {events.length ? <ResponsiveContainer width="100%" height={210}><BarChart data={data} margin={{ top: 10, right: 10, left: -22, bottom: 0 }}><CartesianGrid stroke="#eee5dc" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="day" tick={axisStyle} axisLine={false} tickLine={false} /><YAxis allowDecimals={false} tick={axisStyle} axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} /><Bar dataKey="events" name="Events" fill="#a996c7" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart children="Add events to see how your week is taking shape." /> }
   </Panel>;
 }
 
