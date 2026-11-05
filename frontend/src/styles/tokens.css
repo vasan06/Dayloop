@@ -1,0 +1,21 @@
+:root {
+  font-family: "DM Sans", sans-serif;
+  color: #30242d;
+  background: #f4eee5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --canvas: #f4eee5;
+  --paper: #fffaf3;
+  --paper-deep: #f8f0e6;
+  --ink: #30242d;
+  --muted: #8e817f;
+  --line: #e9ded2;
+  --plum: #69465f;
+  --plum-deep: #4d354c;
+  --coral: #df785f;
+  --saffron: #d6a64d;
+  --lilac: #a996c7;
+  --sage: #8c9a7b;
+  --shadow: 0 12px 36px rgba(74, 48, 58, .055);
+}
+* { box-sizing: border-box; }
