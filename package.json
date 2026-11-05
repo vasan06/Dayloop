@@ -1,0 +1,11 @@
+{
+  "name": "dayloop",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["frontend"],
+  "scripts": {
+    "dev": "npm --workspace frontend run dev",
+    "build": "npm --workspace frontend run build",
+    "typecheck": "npm --workspace frontend run typecheck"
+  }
+}
