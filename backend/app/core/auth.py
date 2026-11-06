@@ -24,6 +24,8 @@ def get_firebase_app():
 def get_current_user(
     authorization: str | None = Header(default=None),
     x_dayloop_dev_user: str | None = Header(default=None),
+    x_dayloop_dev_email: str | None = Header(default=None),
+    x_dayloop_dev_name: str | None = Header(default=None),
 ) -> dict:
     settings = get_settings()
     if settings["auth_mode"] == "development" and settings["app_env"] != "production":
@@ -33,11 +35,14 @@ def get_current_user(
 
         return fetch_one(
             "INSERT INTO users (firebase_uid,email,display_name) VALUES (%s,%s,%s) "
-            "ON CONFLICT (firebase_uid) DO UPDATE SET updated_at=now() RETURNING id,firebase_uid",
+            "ON CONFLICT (firebase_uid) DO UPDATE SET "
+            "email=COALESCE(EXCLUDED.email,users.email),"
+            "display_name=COALESCE(EXCLUDED.display_name,users.display_name),updated_at=now() "
+            "RETURNING id,firebase_uid",
             (
                 f"local:{x_dayloop_dev_user}",
-                f"{x_dayloop_dev_user}@local.dayloop",
-                "Local DayLoop user",
+                x_dayloop_dev_email or f"{x_dayloop_dev_user}@local.dayloop",
+                x_dayloop_dev_name or "Local DayLoop user",
             ),
         )
     if not authorization or not authorization.startswith("Bearer "):

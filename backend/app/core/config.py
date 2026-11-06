@@ -7,10 +7,6 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
-def parse_origins(value: str) -> list[str]:
-    return [origin.strip() for origin in value.split(",") if origin.strip()]
-
-
 @lru_cache(maxsize=1)
 def get_settings() -> dict:
     return {
@@ -18,6 +14,9 @@ def get_settings() -> dict:
         "auth_mode": os.getenv("DAYLOOP_AUTH_MODE", "firebase"),
         "database_url": os.getenv("DATABASE_URL", ""),
         "firebase_project_id": os.getenv("FIREBASE_PROJECT_ID", ""),
-        "allowed_origins": parse_origins(os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")),
         "attachment_root": os.getenv("ATTACHMENT_ROOT", "../storage/attachments"),
+        "cors_origins": os.getenv(
+            "CORS_ORIGINS",
+            "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174",
+        ),
     }

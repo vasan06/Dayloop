@@ -199,7 +199,12 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       <div className="brand-lockup"><div className="brand-mark"><span /><span /><span /></div><span className="brand-name">dayloop<span>.</span></span></div>
       <h1>Your workspace is waiting.</h1>
       <p className="auth-subtitle">We couldn’t load your profile from the DayLoop API.</p>
-      <div className="api-warning">{profileError} Check that the backend and database are running, then try again.</div>
+      <div className="api-warning">
+        <strong>{profileError}</strong>
+        <p>{profileError.startsWith("Network error:")
+          ? "DayLoop could not reach the API. Check that the backend is running, then retry."
+          : "The API responded but could not load this profile. Retry, or sign out and sign in again if the problem continues."}</p>
+      </div>
       <button className="primary-button auth-full-button" onClick={() => window.location.reload()}>Retry connection</button>
       <button className="auth-switch" onClick={() => void leaveWorkspace()}>Sign out</button>
     </section></main>;
