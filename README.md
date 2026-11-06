@@ -28,10 +28,10 @@ DayLoop is a personal-first life workspace combining Notion-inspired knowledge m
    `CREATE ROLE dayloop LOGIN PASSWORD 'choose-a-local-password';`
    `CREATE DATABASE dayloop OWNER dayloop;`
 2. Copy root `.env.example` to `.env`. Set `DATABASE_URL` to the password and database created above. Keep `DAYLOOP_AUTH_MODE=development` only for local development.
-3. Run PowerShell: `cd D:\dayloop\backend; .\run_local.ps1`. This creates a Python environment if needed, installs dependencies, applies pending migrations and starts the API at `http://127.0.0.1:8000`.
-4. In a second terminal: `cd D:\dayloop; npm install; npm run dev`. Open the Vite URL shown in the terminal, normally `http://localhost:5173`.
+3. In Git Bash, create the backend environment once if needed: `cd /d/dayloop/backend`, `python -m venv .venv`, `source .venv/Scripts/activate`, `python -m pip install -r requirements.txt`. Apply migrations deliberately with `python -m app.db.migrate`. Then start the API manually with `python app.py`; logs appear directly in this terminal.
+4. In a second Git Bash terminal: `cd /d/dayloop/frontend`, then `npm install` if needed, then `npm run dev -- --host 0.0.0.0 --port 5174 --strictPort`. Open `http://127.0.0.1:5174`.
 5. Copy `frontend/.env.example` to `frontend/.env` and add your Firebase web app settings to enable email/password and Google sign-in. For local API-only testing, use **Continue with local development identity** on the sign-in page.
-6. Optional in-app reminder worker: in another terminal run `cd D:\dayloop\backend; .\run_worker.ps1`.
+6. Optional in-app reminder worker: in another Git Bash terminal run `cd /d/dayloop/backend`, activate `.venv`, then run `python -m app.worker`.
 
 ## Production authentication
 - Create a Firebase project on the no-cost Spark plan and enable Email/Password and Google authentication under **Authentication → Sign-in method**.
@@ -42,22 +42,40 @@ DayLoop is a personal-first life workspace combining Notion-inspired knowledge m
 
 ## Checks
 - Frontend production build: `npm run build`
-- Backend tests: `cd backend; .\.venv\Scripts\python.exe -m pytest -q`
-- Backend syntax: `cd backend; .\.venv\Scripts\python.exe -m compileall -q app tests`
+- Backend tests (Git Bash): `cd /d/dayloop/backend && .venv/Scripts/python.exe -m pytest -q`
+- Backend syntax (Git Bash): `cd /d/dayloop/backend && .venv/Scripts/python.exe -m compileall -q app tests app.py`
 
-## Run commnds
-- Backend:
-    `cd D:\dayloop\backend`
-    `python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`
-    `curl http://127.0.0.1:8000/api/v1/health`
-- Frontend:
-    `cd D:\dayloop`
-    `npm run dev --workspace frontend -- --host 127.0.0.1`
-- Database:
-    `psql -U dayloop -h 127.0.0.1 -p 5432 -d dayloop`
+## Run DayLoop manually (Git Bash only)
+
+Backend terminal:
+```bash
+cd /d/dayloop/backend
+source .venv/Scripts/activate
+python app.py
+```
+
+The backend runs in the foreground and prints startup, request access, warning and error logs in this terminal. Keep it open; press `Ctrl+C` to stop it.
+
+Frontend terminal:
+```bash
+cd /d/dayloop/frontend
+npm run dev -- --host 0.0.0.0 --port 5174 --strictPort
+```
+
+Health check from a third Git Bash terminal:
+```bash
+curl -i http://127.0.0.1:8000/api/v1/health
+```
+
+Do not start a second backend while one is already listening on port 8000. If startup reports an address-in-use error, identify and stop the existing DayLoop backend process before starting another.
+
+Database shell (when needed):
+```bash
+psql -U dayloop -h 127.0.0.1 -p 5432 -d dayloop
+```
 
 ## URLS
-- App: `http://127.0.0.1:5173`
+- App: `http://127.0.0.1:5174`
 - Backend API: `http://127.0.0.1:8000`
 - API documentation: `http://127.0.0.1:8000/docs`
 - Backend health: `http://127.0.0.1:8000/api/v1/health`

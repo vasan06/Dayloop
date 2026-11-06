@@ -28,7 +28,33 @@ Copy `frontend/.env.example` to `frontend/.env` and add the Firebase web app set
 
 Without Firebase web settings, the sign-in page offers a development-only local identity. This uses the backend's local development auth mode and is not available in production.
 
-## Start
-Run `backend/run_local.ps1`. It installs the Python requirements, checks `DATABASE_URL`, applies unapplied SQL migrations and starts the API at `http://127.0.0.1:8000`. If port 8000 is already in use, stop the old DayLoop API process before restarting so the running code matches the current workspace.
+## Start manually (Git Bash only)
 
-Start the web app separately with `npm run dev` from the repository root. Confirm the API and PostgreSQL connection at `http://127.0.0.1:8000/api/v1/health/ready`; the dashboard also shows a live backend connection status.
+Install the backend environment once, if it does not already exist:
+```bash
+cd /d/dayloop/backend
+python -m venv .venv
+source .venv/Scripts/activate
+python -m pip install -r requirements.txt
+```
+
+Apply database migrations deliberately when needed:
+```bash
+python -m app.db.migrate
+```
+
+Start the API in the foreground so every startup message, request and error is visible in the same Git Bash terminal:
+```bash
+cd /d/dayloop/backend
+source .venv/Scripts/activate
+python app.py
+```
+Keep this terminal open. Press `Ctrl+C` to stop the API. Do not start another copy while port 8000 is occupied.
+
+In a second Git Bash terminal, start the web app:
+```bash
+cd /d/dayloop/frontend
+npm run dev -- --host 0.0.0.0 --port 5174 --strictPort
+```
+
+Confirm the API and PostgreSQL connection at `http://127.0.0.1:8000/api/v1/health/ready`; the dashboard also shows a live backend connection status.
