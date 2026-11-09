@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one, get_connection
@@ -105,3 +105,15 @@ def update_page(page_id: str, payload: dict, user: dict = Depends(get_current_us
     if not page:
         raise HTTPException(status_code=404, detail="Page not found.")
     return {"item": page}
+
+
+@router.delete("/{page_id}", status_code=204)
+def delete_page(page_id: str, user: dict = Depends(get_current_user)) -> Response:
+    page = fetch_one(
+        "UPDATE note_pages SET deleted_at=now(),updated_at=now() WHERE id=%s AND user_id=%s "
+        "AND deleted_at IS NULL RETURNING id",
+        (page_id, user["id"]),
+    )
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    return Response(status_code=204)

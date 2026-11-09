@@ -14,6 +14,7 @@ from app.features.calendar.routes import router as calendar_router
 from app.features.finance.routes import router as finance_router
 from app.features.goals.routes import router as goals_router
 from app.features.habits.routes import router as habits_router
+from app.features.insights.routes import router as insights_router
 from app.features.notes.routes import router as notes_router
 from app.features.notifications.routes import router as notifications_router
 from app.features.profile.routes import router as profile_router
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
         )
 
     routers = [
+        insights_router,
         health_router,
         projects_router,
         profile_router,

@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one
@@ -206,3 +206,15 @@ def create_savings_goal(payload: dict, user: dict = Depends(get_current_user)) -
             ),
         )
     }
+
+
+@router.delete("/transactions/{transaction_id}", status_code=204)
+def void_transaction(transaction_id: str, user: dict = Depends(get_current_user)) -> Response:
+    row = fetch_one(
+        "UPDATE finance_transactions SET voided_at=now() WHERE id=%s AND user_id=%s "
+        "AND voided_at IS NULL RETURNING id",
+        (transaction_id, user["id"]),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Transaction not found.")
+    return Response(status_code=204)

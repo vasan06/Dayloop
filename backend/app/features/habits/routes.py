@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one, get_connection
@@ -105,3 +105,14 @@ def save_entry(
         (habit_id, entry_date, payload["status"], payload.get("value"), payload.get("note", "")),
     )
     return {"item": entry}
+
+
+@router.delete("/{habit_id}", status_code=204)
+def archive_habit(habit_id: str, user: dict = Depends(get_current_user)) -> Response:
+    habit = fetch_one(
+        "UPDATE habits SET archived_at=now() WHERE id=%s AND user_id=%s AND archived_at IS NULL RETURNING id",
+        (habit_id, user["id"]),
+    )
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found.")
+    return Response(status_code=204)

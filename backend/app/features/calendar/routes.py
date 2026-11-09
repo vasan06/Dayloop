@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one
@@ -63,3 +63,14 @@ def create_event(payload: dict, user: dict = Depends(get_current_user)) -> dict:
             ),
         )
     }
+
+
+@router.delete("/events/{event_id}", status_code=204)
+def delete_event(event_id: str, user: dict = Depends(get_current_user)) -> Response:
+    event = fetch_one(
+        "DELETE FROM calendar_events WHERE id=%s AND user_id=%s RETURNING id",
+        (event_id, user["id"]),
+    )
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    return Response(status_code=204)
