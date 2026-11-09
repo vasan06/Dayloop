@@ -1,0 +1,9 @@
+{
+  "name": "DayLoop",
+  "short_name": "DayLoop",
+  "description": "Make room for what matters.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4eee5",
+  "theme_color": "#69465f"
+}
