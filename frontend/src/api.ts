@@ -1,0 +1,3 @@
+const API=import.meta.env.VITE_API_URL||'http://localhost:8000/api/v1';
+export async function api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch(API+path,{...options,headers:{'Content-Type':'application/json','X-Dayloop-Dev-User':localStorage.getItem('dayloop-user')||'local-user','X-Dayloop-Dev-Name':'DayLoop User',...(options.headers||{})}});if(!r.ok){const b=await r.json().catch(()=>({}));throw new Error(typeof b.detail==='string'?b.detail:`Request failed (${r.status})`)}return r.status===204?undefined as T:r.json()}
+export const post=<T,>(p:string,b:unknown)=>api<T>(p,{method:'POST',body:JSON.stringify(b)});export const patch=<T,>(p:string,b:unknown)=>api<T>(p,{method:'PATCH',body:JSON.stringify(b)});
