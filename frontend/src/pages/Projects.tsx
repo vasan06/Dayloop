@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 import { Card, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Progress, Skeleton } from "../components/ui";
 import { useCreateGoal, useCreateProject, useDeleteProject, useGoals, useProjects, useTasks, useUpdateGoal, useUpdateProject } from "../hooks/data";
@@ -45,12 +46,15 @@ export default function Projects() {
           const pr = progress.get(p.id); const pct = pr?.total ? (pr.done / pr.total) * 100 : 0;
           return (
             <Card key={p.id} i={i}>
-              <div className={`cover tn-${toneOf(p.id)}`} />
-              <div className="row sb"><h3 style={{ cursor: "pointer" }} onClick={() => setEditing(p)}>{p.name}</h3><span className={`pill ${p.status === "completed" ? "ok" : p.status === "on_hold" ? "md" : "blue"}`}>{STATUS.find(([k]) => k === p.status)?.[1]}</span></div>
-              <p className="mute sm" style={{ margin: "4px 0 12px" }}>{p.description || "No description"}</p>
-              <Progress value={pct} />
-              <div className="row sb sm mute" style={{ marginTop: 8 }}><span>{pr?.done ?? 0}/{pr?.total ?? 0} tasks</span><span>{p.due_date ? `Due ${shortDate(p.due_date)}` : "No deadline"}</span></div>
+              <Link to={`/projects/${p.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                <div className={`cover tn-${toneOf(p.id)}`} />
+                <div className="row sb"><h3>{p.name}</h3><span className={`pill ${p.status === "completed" ? "ok" : p.status === "on_hold" ? "md" : "blue"}`}>{STATUS.find(([k]) => k === p.status)?.[1]}</span></div>
+                <p className="mute sm" style={{ margin: "4px 0 12px" }}>{p.description || "No description"}</p>
+                <Progress value={pct} />
+                <div className="row sb sm mute" style={{ marginTop: 8 }}><span>{pr?.done ?? 0}/{pr?.total ?? 0} tasks</span><span>{p.due_date ? `Due ${shortDate(p.due_date)}` : "No deadline"}</span></div>
+              </Link>
               <div className="row" style={{ marginTop: 10 }}>
+                <Link to={`/projects/${p.id}`} className="btn sm">View</Link>
                 <button className="btn sm" onClick={() => setEditing(p)}>Edit</button>
                 <button className="btn sm ghost" aria-label={`Archive ${p.name}`} onClick={() => setDeleting(p)}><Trash2 className="ic" style={{ width: 14, height: 14 }} />Archive</button>
               </div>

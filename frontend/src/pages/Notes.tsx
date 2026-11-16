@@ -17,6 +17,7 @@ function Editor({ id }: { id: string }) {
   const [body, setBody] = useState("");
   const loaded = useRef<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [slashOpen, setSlashOpen] = useState(false);
 
   useEffect(() => {
     if (note.data && loaded.current !== id) {
@@ -46,7 +47,8 @@ function Editor({ id }: { id: string }) {
   return (
     <div>
       <input aria-label="Note title" value={title} onChange={(e) => { setTitle(e.target.value); setDirty(true); }} style={{ width: "100%", border: 0, background: "none", outline: 0, fontFamily: "var(--f-d)", fontSize: 26, fontWeight: 600, letterSpacing: "-.03em", marginBottom: 10 }} />
-      <textarea aria-label="Note body" value={body} placeholder="Start writing… separate paragraphs with a blank line." onChange={(e) => { setBody(e.target.value); setDirty(true); }} style={{ width: "100%", minHeight: 360, border: 0, background: "none", outline: 0, resize: "vertical", lineHeight: 1.7, fontSize: 15 }} />
+      <div style={{ position: "relative" }}><textarea aria-label="Note body" value={body} placeholder="Start writing… type / for blocks" onChange={(e) => { const next = e.target.value; setBody(next); setDirty(true); setSlashOpen(/(^|\n)\/$/.test(next)); }} style={{ width: "100%", minHeight: 360, border: 0, background: "none", outline: 0, resize: "vertical", lineHeight: 1.7, fontSize: 15 }} />
+      {slashOpen && <div className="menu" style={{ position: "absolute", left: 0, top: 44, zIndex: 5, display: "grid", gridTemplateColumns: "repeat(2,minmax(130px,1fr))" }}>{["paragraph", "heading_1", "heading_2", "heading_3", "heading_4", "heading_5", "heading_6", "progress", "checkbox", "code", "toggle", "page", "columns"].map((type) => <button key={type} onClick={() => { setBody((current) => current.replace(/\/$/, `${type.replace("_", " ")} `)); setSlashOpen(false); }}>{type.replaceAll("_", " ")}</button>)}</div>}</div>
       <div className="row sb sm mute"><span>{dirty ? "Unsaved changes…" : save.isPending ? "Saving…" : "All changes saved"}</span><button className="btn sm" onClick={persist} disabled={save.isPending}>Save now</button></div>
     </div>
   );

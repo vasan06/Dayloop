@@ -9,7 +9,7 @@ export default function Settings() {
   const profile = useProfile();
   const save = useSaveProfile();
   const [f, setF] = useState({ display_name: "", username: "", age: "", role: "other" });
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("dl-theme") ?? "system"; } catch { return "system"; } });
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("dl-theme") ?? "light"; } catch { return "light"; } });
   useEffect(() => { const p = profile.data; if (p) setF({ display_name: p.display_name ?? "", username: p.username ?? "", age: p.age ? String(p.age) : "", role: p.role ?? "other" }); }, [profile.data]);
   const pick = (t: string) => { setTheme(t); applyTheme(t); try { localStorage.setItem("dl-theme", t); } catch { /* ignore */ } };
   const err = save.error instanceof Error ? save.error.message : "";

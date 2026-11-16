@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import { Check, CircleAlert, X } from "lucide-react";
 import type { ToastDetail } from "../lib/toast";
 
+// Kept in the shared UI barrel so module pages can use the same reference progress treatment.
+export { Progress } from "./charts";
+
 export function Card({ tone, className = "", i = 0, children, ...rest }: {
   tone?: "butter" | "mint" | "sky" | "blush" | "lilac" | "acc"; className?: string; i?: number; children: ReactNode;
 } & React.HTMLAttributes<HTMLElement>) {

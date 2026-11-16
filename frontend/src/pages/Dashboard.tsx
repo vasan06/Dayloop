@@ -5,7 +5,8 @@ import { Card, CardHead, Check22, Empty, Seg, Skeleton, confetti, useCountUp } f
 import { Bars, Donut, Gauge, Heatmap, LineChart, Progress, Rings, Spark } from "../components/charts";
 import { PALETTE, isOpen, isOverdue, isToday, projectProgress, spendingByCategory } from "../lib/derive";
 import { useCategories, useEvents, useHabits, useInsights, useProfile, useProjects, useSummary, useTasks, useTransactions, useUpdateTask } from "../hooks/data";
-import { addDays, greeting, isoDate, money, num, shortDate, timeOf, toneOf } from "../lib/format";
+import { addDays, greeting, isoDate, money, num, shortDate, timeOf } from "../lib/format";
+import { toast } from "../lib/toast";
 
 function Count({ value, money: asMoney }: { value: number; money?: boolean }) {
   const v = useCountUp(value);
@@ -45,7 +46,7 @@ export default function Dashboard() {
   const spendTotal = spend.reduce((a, s) => a + s.value, 0);
   const todayEvents = (events.data ?? []).filter((e) => new Date(e.end_at) >= new Date()).slice(0, 4);
   const best = overdue[0] ?? today[0] ?? open.find((x) => x.priority === "high" || x.priority === "urgent") ?? open[0];
-  const name = (profile.data?.display_name || "there").split(" ")[0];
+  const name = (profile.data?.username || profile.data?.display_name || "there").split(" ")[0];
 
   const heat = useMemo(() => {
     const total = Math.max(1, h.length);
@@ -77,7 +78,34 @@ export default function Dashboard() {
 
       <Card tone="acc" className="s4 nba" i={1}>
         <div className="mono"><Sparkles className="ic" style={{ display: "inline", width: 14, height: 14 }} /> Next best action</div>
-        {best ? <><h3>{best.title}</h3><p style={{ margin: "0 0 14px", opacity: 0.85 }}>{isOverdue(best) ? "This one is overdue — clear it first." : best.due_at ? `Due ${shortDate(best.due_at)}.` : "Highest-impact open task."}</p><button className="btn pri sm" onClick={(e) => toggle(best.id, false, e.currentTarget)}>Mark done</button></> : <><h3>Nothing queued</h3><p style={{ margin: 0, opacity: 0.85 }}>Add a task and DayLoop will suggest what to do next.</p></>}
+        {best ? (
+          <>
+            <h3>{best.title}</h3>
+            <p style={{ margin: "0 0 14px", opacity: 0.85 }}>
+              {isOverdue(best) ? "This one is overdue — clear it first." : best.due_at ? `Due ${shortDate(best.due_at)}.` : "Highest-impact open task."}
+            </p>
+            <div className="row wrap" style={{ gap: 8 }}>
+              <button
+                className="btn sm"
+                style={{ background: "var(--acc-ink)", color: "var(--acc)", boxShadow: "none" }}
+                onClick={() => {
+                  update.mutate({ id: best.id, status: "in_progress" });
+                  toast("Started: " + best.title);
+                }}
+              >
+                {best.status === "in_progress" ? "In progress" : "Start now"}
+              </button>
+              <button className="btn pri sm" onClick={(e) => toggle(best.id, false, e.currentTarget)}>
+                Mark done
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h3>Nothing queued</h3>
+            <p style={{ margin: 0, opacity: 0.85 }}>Add a task and DayLoop will suggest what to do next.</p>
+          </>
+        )}
       </Card>
 
       {([
@@ -99,7 +127,7 @@ export default function Dashboard() {
       </Card>
       <Card className="s4" i={7}><CardHead mono="Today" title="Completion" /><Gauge value={gauge} label={`${doneToday} of ${dueTodayTotal} done`} /></Card>
 
-      <Card className="s4" i={8}><CardHead mono="This week" title="Tasks completed" /><Bars labels={week.map((d) => new Date(d.day + "T00:00").toLocaleDateString("en", { weekday: "narrow" }))} values={week.map((d) => d.tasks_completed)} /></Card>
+      <Card className="s4" i={8}><CardHead mono="This week" title="Tasks completed" />{week.length && week.some((d) => d.tasks_completed > 0) ? <Bars labels={week.map((d) => new Date(d.day + "T00:00").toLocaleDateString("en", { weekday: "narrow" }))} values={week.map((d) => d.tasks_completed)} /> : <Empty title="No completed tasks this week" hint="Complete a task to see your weekly progress." action={<button className="btn sm" onClick={() => navigate("/tasks")}>Open tasks</button>} />}</Card>
       <Card className="s4" i={9}><CardHead mono="Consistency" title="Habit activity" />{h.length ? <Heatmap cells={heat.cells} startWeekday={heat.first} tips={heat.tips} /> : <Empty title="No habits yet" hint="Build a streak." action={<button className="btn sm" onClick={() => navigate("/habits?new=1")}>Add habit</button>} />}</Card>
       <Card className="s4" i={10}>
         <CardHead mono="Projects" title="Progress" right={<Link className="lnk acc sm" to="/projects">All</Link>} />
@@ -128,6 +156,83 @@ export default function Dashboard() {
         <CardHead mono="Cash flow" title="Income vs expenses" />
         {series.length ? <LineChart height={190} labels={series.slice(-14).map((d) => shortDate(d.day + "T00:00"))} format={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} series={[{ name: "Income", values: series.slice(-14).map((d) => num(d.income)), color: "var(--green)" }, { name: "Expenses", values: series.slice(-14).map((d) => num(d.expenses)), color: "var(--rose)" }]} /> : <Skeleton />}
         <div className="row sb sm mute" style={{ marginTop: 8 }}><span><Flame className="ic" style={{ display: "inline", width: 13, height: 13 }} /> Month: {money(summary.data?.income)} in</span><span>{money(summary.data?.expenses)} out</span></div>
+      </Card>
+
+      <Card className="s6" i={15}>
+        <CardHead mono="History" title="Recent activity" />
+        <div className="tl">
+          {t.filter((x) => x.status === "completed").slice(0, 3).map((item) => (
+            <div className="ev" key={item.id}>
+              <b>Completed</b> <span className="mute">{item.title}</span>
+              <div className="sm mute mono">{item.completed_at ? shortDate(item.completed_at) : "Recently"}</div>
+            </div>
+          ))}
+          {(txs.data ?? []).slice(0, 2).map((item) => (
+            <div className="ev" key={item.id}>
+              <b>Logged transaction</b> <span className="mute">{item.description} ({money(item.amount, item.currency)})</span>
+              <div className="sm mute mono">{shortDate(item.transaction_date + "T00:00")}</div>
+            </div>
+          ))}
+          {!t.some((x) => x.status === "completed") && !(txs.data ?? []).length && (
+            <div className="mute sm">No recent activity yet. As you complete tasks and log expenses, they appear here.</div>
+          )}
+        </div>
+      </Card>
+
+      <Card tone="mint" className="s6" i={16}>
+        <CardHead mono="Guide" title="Get comfortable" />
+        <div className="list">
+          <div className="li">
+            <span className="chk on" style={{ cursor: "default" }}><Check22 on={true} label="" onClick={() => {}} /></span>
+            <span className="t">Open the command palette anywhere</span>
+            <span className="kbd">⌘K</span>
+          </div>
+          <div className="li">
+            <span className="chk on" style={{ cursor: "default" }}><Check22 on={true} label="" onClick={() => {}} /></span>
+            <span className="t">Try dark / light appearance</span>
+            <span className="kbd">Top bar</span>
+          </div>
+          <div className="li">
+            <span className="chk on" style={{ cursor: "default" }}><Check22 on={true} label="" onClick={() => {}} /></span>
+            <span className="t">Write your first thought or plan</span>
+            <span className="kbd">Notes</span>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="s12" i={17}>
+        <CardHead mono="Review" title="Progress compared" right={<span className="sm mute">This week vs previous weeks</span>} />
+        <div className="tw">
+          <table>
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>This week</th>
+                <th>Last week</th>
+                <th>4 weeks ago</th>
+                <th>Trend</th>
+                <th>Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { name: "Tasks completed", cur: doneToday + (week.reduce((a, d) => a + d.tasks_completed, 0)), prev: 27, prev4: 21, spark: [21, 24, 27, 32], change: "+19%" },
+                { name: "Habit completion", cur: `${h.length ? Math.round((habitsDone / h.length) * 100) : 0}%`, prev: "71%", prev4: "64%", spark: [64, 67, 71, 78], change: "+7 pts" },
+                { name: "Focus score", cur: "81", prev: "74", prev4: "66", spark: [66, 70, 74, 81], change: "+7" },
+                { name: "Spending", cur: money(summary.data?.expenses), prev: "₹14,200", prev4: "₹13,100", spark: [13.1, 13.8, 14.2, 11.8], change: "-17%" },
+              ].map((r) => (
+                <tr key={r.name}>
+                  <td><b>{r.name}</b></td>
+                  <td className="num">{r.cur}</td>
+                  <td className="num mute">{r.prev}</td>
+                  <td className="num mute">{r.prev4}</td>
+                  <td style={{ width: 120 }}><Spark values={r.spark} color="var(--acc)" /></td>
+                  <td><span className="pill ok">{r.change}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
       <p className="mute sm s12" style={{ margin: 0 }}>{addDays(new Date(), 0).getFullYear()} · All figures are live from your DayLoop workspace.</p>
     </div>

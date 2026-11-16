@@ -233,7 +233,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
   return shell(<form onSubmit={submitAuth}>
     {brand}<h1 style={{ marginBottom: 6 }}>{titles[mode]}</h1>
     <p className="mute" style={{ marginTop: 0 }}>{mode === "forgot" ? "We’ll email you a reset link." : "Sign in to your private DayLoop workspace."}</p>
-    {!firebaseConfigured && <div className="err" style={{ marginBottom: 14 }}>Firebase isn’t configured. Add your VITE_FIREBASE_* values to frontend/.env{import.meta.env.DEV ? " — or use the local development identity below." : "."}</div>}
+    {!firebaseConfigured && <div className="err" style={{ marginBottom: 14 }}>Firebase configuration is unavailable to this running frontend. Restart the Vite server after saving frontend/.env, or use the local development identity in development.</div>}
     <div className="field"><label htmlFor="a-email">Email</label><input id="a-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
     {mode !== "forgot" && <div className="field"><label htmlFor="a-pw">Password</label><div className="pw"><input id="a-pw" type={showPw ? "text" : "password"} autoComplete={register ? "new-password" : "current-password"} minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} /><button type="button" aria-label={showPw ? "Hide password" : "Show password"} onClick={() => setShowPw((s) => !s)}>{showPw ? <EyeOff className="ic" /> : <Eye className="ic" />}</button></div>
       {register && <div className={`meter s${strength}`} aria-hidden="true"><i /><i /><i /><i /></div>}</div>}

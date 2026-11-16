@@ -73,10 +73,42 @@ export function Bars({ labels, values, color = "var(--acc)", height = 150, forma
         return (
           <g key={i} data-tip={`${labels[i]}: ${format(v)}`}>
             <rect className="bar" style={{ "--k": i } as CSSProperties} x={cx - bw / 2} y={H - B - h} width={bw} height={Math.max(h, v ? 3 : 0)} rx={bw / 2.4} fill={color} />
-            <text x={cx} y={H - 6} textAnchor="middle">{labels[i]}</text>
+            <text x={cx} y={H - 6} textAnchor="middle" fontSize="9">{labels[i]}</text>
           </g>
         );
       })}
+    </svg>
+  );
+}
+
+export type HabitActivityChartPoint = {
+  day: string; completed: number; skipped: number; scheduled: number; active: number; streaking: number; completion_rate: number;
+};
+
+/** Combined habit progress: completion bars with active and streaking habit lines. */
+export function HabitProgressChart({ points, height = 220 }: { points: HabitActivityChartPoint[]; height?: number }) {
+  const W = 640, H = height, L = 36, R = 12, T = 18, B = 30;
+  const maxActive = Math.max(1, ...points.map((p) => Math.max(p.active, p.streaking)));
+  const x = (i: number) => L + (i * (W - L - R)) / Math.max(1, points.length - 1);
+  const yRate = (v: number) => T + (1 - Math.max(0, Math.min(100, v)) / 100) * (H - T - B);
+  const yCount = (v: number) => T + (1 - v / maxActive) * (H - T - B);
+  const path = (key: "active" | "streaking") => smooth(points.map((p, i) => [x(i), yCount(p[key])] as [number, number]));
+  const every = Math.max(1, Math.ceil(points.length / 7));
+  return (
+    <svg className="chart habit-progress-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Combined habit progress chart">
+      {[0, 25, 50, 75, 100].map((v) => <g key={v}><line className="gl" x1={L} x2={W - R} y1={yRate(v)} y2={yRate(v)} /><text x={L - 8} y={yRate(v) + 3} textAnchor="end" fontSize="9">{v}%</text></g>)}
+      {points.map((p, i) => {
+        const bw = Math.max(3, Math.min(20, ((W - L - R) / Math.max(1, points.length)) * .62));
+        const rate = Math.max(0, Math.min(100, p.completion_rate));
+        return <g key={p.day} data-tip={`${new Date(`${p.day}T00:00:00`).toLocaleDateString("en", { weekday: "short", month: "short", day: "numeric" })}\n${p.completed} habits completed · ${p.skipped} skipped\n${Math.round(rate)}% completion\nActive: ${p.active} · Streaking: ${p.streaking}`}>
+          <rect x={x(i) - bw / 2} y={yRate(rate)} width={bw} height={Math.max(2, yRate(0) - yRate(rate))} rx={bw / 2} fill="var(--acc)" opacity=".72" />
+          {i % every === 0 && <text x={x(i)} y={H - 8} textAnchor="middle" fontSize="9">{new Date(`${p.day}T00:00:00`).toLocaleDateString("en", { day: "numeric", month: "short" })}</text>}
+        </g>;
+      })}
+      <path className="ln" d={path("active")} fill="none" stroke="var(--amber)" strokeWidth="2.5" strokeLinecap="round" />
+      <path className="ln" d={path("streaking")} fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx={W - 155} cy={13} r={4} fill="var(--amber)" /><text x={W - 147} y={16} fontSize="9">active</text>
+      <circle cx={W - 88} cy={13} r={4} fill="var(--green)" /><text x={W - 80} y={16} fontSize="9">streaking</text>
     </svg>
   );
 }
@@ -164,4 +196,104 @@ export function Heatmap({ cells, startWeekday, tips }: { cells: number[]; startW
 
 export function Progress({ value, color }: { value: number; color?: string }) {
   return <div className="pbar" role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: color }} /></div>;
+}
+
+export type FlowSource = { label: string; value: number; color: string };
+export type FlowTarget = { label: string; value: number; color: string };
+
+export function FlowChart({ sources, targets, height = 230 }: {
+  sources: FlowSource[]; targets: FlowTarget[]; height?: number;
+}) {
+  const total = Math.max(1, sources.reduce((a, s) => a + s.value, 0));
+  const targetTotal = Math.max(1, targets.reduce((a, t) => a + t.value, 0));
+  const W = 520, H = height;
+  const sc = (H - 30) / Math.max(total, targetTotal);
+  const x0 = 92, x1 = W - 92;
+
+  let sy = 8;
+  const srcNodes = sources.map((s) => {
+    const h = Math.max(8, s.value * sc);
+    const node = { ...s, y: sy, h };
+    sy += h + 10;
+    return node;
+  });
+
+  let ty = 6;
+  const tgtNodes = targets.map((t) => {
+    const h = Math.max(8, t.value * sc);
+    const node = { ...t, y: ty, h };
+    ty += h + 8;
+    return node;
+  });
+
+  const sourceOffsets = sources.map(() => 0);
+  const paths: { d: string; color: string; tip: string }[] = [];
+
+  tgtNodes.forEach((t) => {
+    let targetOffset = 0;
+    srcNodes.forEach((s, k) => {
+      const share = total > 0 ? (s.value * t.value) / (total * targetTotal) * total : 0;
+      const h = Math.max(2, share * sc);
+      const ya = s.y + sourceOffsets[k];
+      const yb = t.y + targetOffset;
+      sourceOffsets[k] += h;
+      targetOffset += h;
+      const xm = (x0 + x1) / 2;
+      const d = `M${x0},${ya} C${xm},${ya} ${xm},${yb} ${x1},${yb} L${x1},${yb + h} C${xm},${yb + h} ${xm},${ya + h} ${x0},${ya + h} Z`;
+      paths.push({
+        d,
+        color: s.color,
+        tip: `${s.label} → ${t.label}\n₹${Math.round(share).toLocaleString("en-IN")}`,
+      });
+    });
+  });
+
+  return (
+    <svg className="chart" viewBox={`0 0 ${W + 40} ${H}`} role="img" aria-label="Income flowing into spending categories and savings">
+      {paths.map((p, i) => (
+        <path key={i} className="fl" data-tip={p.tip} d={p.d} fill={p.color} fillOpacity={0.32} style={{ transition: "fill-opacity .2s" }} />
+      ))}
+      {srcNodes.map((s) => (
+        <g key={s.label}>
+          <rect x={x0 - 8} y={s.y} width={8} height={s.h} rx={4} fill={s.color} />
+          <text x={x0 - 14} y={s.y + s.h / 2 + 3} textAnchor="end" fontSize="11" fill="var(--ink)">{s.label}</text>
+        </g>
+      ))}
+      {tgtNodes.map((t) => (
+        <g key={t.label}>
+          <rect x={x1} y={t.y} width={8} height={t.h} rx={4} fill={t.color} />
+          <text x={x1 + 14} y={t.y + t.h / 2 + 3} fontSize="11" fill="var(--ink)">{t.label} ₹{Math.round(t.value).toLocaleString("en-IN")}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+export function CashflowHeatmap({ days }: { days: { date: string; net: number }[] }) {
+  const cap = 15000;
+  const lead = days[0] ? new Date(days[0].date + "T00:00:00Z").getUTCDay() : 0;
+  return (
+    <div>
+      <div className="hmh">{["S", "M", "T", "W", "T", "F", "S"].map((d, i) => <span key={i}>{d}</span>)}</div>
+      <div className="hm">
+        {Array.from({ length: lead }, (_, i) => <i key={`cg${i}`} className="gh" />)}
+        {days.map((c, i) => {
+          const m = Math.min(1, Math.sqrt(Math.abs(c.net) / cap));
+          const col = c.net >= 0 ? "var(--green)" : "var(--rose)";
+          const bg = c.net !== 0 ? `color-mix(in srgb, ${col} ${Math.round(25 + m * 70)}%, var(--track))` : undefined;
+          return (
+            <i
+              key={c.date}
+              style={{ "--k": i, background: bg } as CSSProperties}
+              data-tip={`${new Date(c.date + "T00:00:00Z").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}\n${c.net >= 0 ? "+" : ""}₹${Math.round(c.net).toLocaleString("en-IN")}`}
+            />
+          );
+        })}
+      </div>
+      <div className="row sm mute" style={{ marginTop: 10, gap: 14 }}>
+        <span className="row" style={{ gap: 6 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: "var(--green)", display: "block" }} />Net inflow</span>
+        <span className="row" style={{ gap: 6 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: "var(--rose)", display: "block" }} />Net outflow</span>
+      </div>
+    </div>
+  );
 }

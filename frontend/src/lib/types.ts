@@ -34,18 +34,32 @@ export type Habit = {
   name: string;
   description: string;
   habit_type: "positive" | "negative";
-  measurement_type: "boolean" | "quantity" | "duration";
+  measurement_type: "boolean" | "quantity" | "duration" | "text";
   target_value: number | null;
   unit: string | null;
   schedule_type: "daily" | "weekly" | "custom" | null;
   schedule_config: { weekdays?: number[] } | null;
   current_streak: number;
+  current_streak_start: string | null;
+  current_streak_end: string | null;
+  previous_streak_start: string | null;
+  previous_streak_end: string | null;
+  previous_streak_days: number;
+  last_break_date: string | null;
+  today_status: HabitEntry["status"] | null;
   completed_today: boolean;
   consistency_30d: number;
   scheduled_days_30d: number;
 };
 
-export type HabitEntry = { entry_date: string; status: "completed" | "skipped" | "missed" | "failed"; value: number | null };
+export type HabitEntry = { entry_date: string; status: "completed" | "skipped" | "missed" | "failed"; value: number | null; note?: string };
+export type HabitActivityPoint = { day: string; completed: number; skipped: number; missed: number; scheduled: number; active: number; streaking: number; completion_rate: number };
+export type HabitInsights = {
+  days: number;
+  series: HabitActivityPoint[];
+  streaks: Array<{ habit_id: string; name: string; current_streak: number; previous_streak_start: string | null; previous_streak_end: string | null; previous_streak_days: number; last_break_date: string | null }>;
+};
+export type Notification = { id: string; title: string; body: string; source_type: string | null; source_id: string | null; read_at: string | null; created_at: string };
 
 export type NotePage = { id: string; title: string; icon: string | null; is_favorite: boolean; updated_at: string; created_at: string };
 export type NoteBlock = { id?: string; block_type: string; content: { text?: string }; position?: number };

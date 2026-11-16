@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Edit2, Plus, Search, Trash2 } from "lucide-react";
 import { Card, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Check22, Skeleton, confetti, type FieldDef } from "../components/ui";
 import { useCreateTask, useDeleteTask, useProjects, useTasks, useUpdateTask } from "../hooks/data";
 import { useNewParam } from "../hooks/useNewParam";
@@ -64,9 +65,10 @@ export default function Tasks() {
         ) : <div className="list">{shown.map((t) => (
           <div key={t.id} className={`li ${t.status === "completed" ? "done" : ""}`}>
             <Check22 on={t.status === "completed"} label={`Toggle ${t.title}`} onClick={() => { update.mutate({ id: t.id, status: t.status === "completed" ? "not_started" : "completed" }); if (t.status !== "completed") confetti(); }} />
-            <button className="t" style={{ background: "none", border: 0, textAlign: "left", cursor: "pointer", padding: 0 }} onClick={() => setEditing(t)}><b>{t.title}</b>{projectName(t.project_id) && <span className="mute sm"> · {projectName(t.project_id)}</span>}</button>
+            <Link to={`/tasks/${t.id}`} className="t lnk" style={{ textDecoration: "none", color: "inherit", padding: 0 }}><b>{t.title}</b>{projectName(t.project_id) && <span className="mute sm"> · {projectName(t.project_id)}</span>}</Link>
             <span className={`pill ${PRI_CLASS[t.priority]}`}>{priorityLabel[t.priority]}</span>
             {t.due_at && <span className={`pill ${isOverdue(t) ? "hi" : ""}`}>{shortDate(t.due_at)}</span>}
+            <button className="iconbtn" style={{ width: 32, height: 32 }} aria-label={`Edit ${t.title}`} onClick={() => setEditing(t)}><Edit2 className="ic" style={{ width: 14, height: 14 }} /></button>
             <button className="iconbtn" style={{ width: 32, height: 32 }} aria-label={`Delete ${t.title}`} onClick={() => setDeleting(t)}><Trash2 className="ic" style={{ width: 15, height: 15 }} /></button>
           </div>
         ))}</div>}

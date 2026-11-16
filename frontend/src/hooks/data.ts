@@ -3,8 +3,8 @@ import { apiRequest } from "../lib/api";
 import { isoDate } from "../lib/format";
 import { toast } from "../lib/toast";
 import type {
-  Budget, CalendarEvent, Category, FinanceSummary, Goal, Habit, HabitEntry, Insights, NoteBlock, NotePage,
-  Profile, Project, SavingsGoal, SearchResult, Task, Transaction,
+  Budget, CalendarEvent, Category, FinanceSummary, Goal, Habit, HabitEntry, HabitInsights, Insights, NoteBlock, NotePage,
+  Notification, Profile, Project, SavingsGoal, SearchResult, Task, Transaction,
 } from "../lib/types";
 
 const json = (body: unknown): RequestInit => ({ body: JSON.stringify(body) });
@@ -14,12 +14,15 @@ export const keys = {
   profile: ["profile"], tasks: ["tasks"], projects: ["projects"], habits: ["habits"], notes: ["notes"],
   transactions: ["transactions"], categories: ["categories"], budgets: ["budgets"], savings: ["savings"],
   summary: ["finance-summary"], goals: ["goals"], events: ["events"], insights: ["insights"],
+  notifications: ["notifications"],
 } as const;
 
 export const useProfile = () => useQuery({ queryKey: keys.profile, queryFn: () => apiRequest<{ item: Profile }>("/profile").then((r) => r.item) });
 export const useTasks = () => useQuery({ queryKey: keys.tasks, queryFn: items<Task>("/tasks") });
 export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: items<Project>("/projects") });
 export const useHabits = () => useQuery({ queryKey: keys.habits, queryFn: items<Habit>("/habits") });
+export const useHabitInsights = (days = 42) =>
+  useQuery({ queryKey: ["habit-insights", days], queryFn: () => apiRequest<HabitInsights>(`/habits/insights?days=${days}`) });
 export const useNotes = () => useQuery({ queryKey: keys.notes, queryFn: items<NotePage>("/notes") });
 export const useTransactions = () => useQuery({ queryKey: keys.transactions, queryFn: items<Transaction>("/finance/transactions") });
 export const useCategories = () => useQuery({ queryKey: keys.categories, queryFn: items<Category>("/finance/categories") });
@@ -28,6 +31,8 @@ export const useSavings = () => useQuery({ queryKey: keys.savings, queryFn: item
 export const useGoals = () => useQuery({ queryKey: keys.goals, queryFn: items<Goal>("/goals") });
 export const useSummary = () => useQuery({ queryKey: keys.summary, queryFn: () => apiRequest<FinanceSummary>("/finance/summary") });
 export const useEvents = () => useQuery({ queryKey: keys.events, queryFn: items<CalendarEvent>("/calendar/events") });
+export const useNotifications = (unreadOnly = false) => useQuery({ queryKey: [...keys.notifications, unreadOnly], queryFn: items<Notification>(`/notifications${unreadOnly ? "?unread_only=true" : ""}`), refetchInterval: 30000 });
+export const useMarkNotificationRead = () => useAction((id: string) => apiRequest(`/notifications/${id}/read`, { method: "PATCH" }), [keys.notifications]);
 export const useInsights = (days: number) =>
   useQuery({ queryKey: [...keys.insights, days], queryFn: () => apiRequest<Insights>(`/insights/overview?days=${days}`) });
 export const useSearch = (q: string) =>
@@ -50,6 +55,9 @@ function useAction<V, R = unknown>(fn: (v: V) => Promise<R>, refresh: QueryKey[]
       refresh.forEach((key) => void client.invalidateQueries({ queryKey: key }));
       if (message) toast(typeof message === "function" ? message(vars) : message);
     },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "Something went wrong. Please try again.", "error");
+    },
   });
 }
 
@@ -71,14 +79,21 @@ export const useDeleteProject = () =>
 
 export const useCreateHabit = () =>
   useAction((v: Record<string, unknown>) => apiRequest("/habits", { method: "POST", ...json({ schedule_type: "daily", ...v }) }), [keys.habits], "Habit created");
+export const useUpdateHabit = () =>
+  useAction((v: { id: string } & Record<string, unknown>) => {
+    const { id, ...rest } = v;
+    return apiRequest(`/habits/${id}`, { method: "PATCH", ...json(rest) });
+  }, [keys.habits, ["habit-insights"]], "Habit updated");
 export const useDeleteHabit = () =>
   useAction((id: string) => apiRequest(`/habits/${id}`, { method: "DELETE" }), [keys.habits], "Habit archived");
 export const useCheckHabit = () =>
   useAction(
-    (v: { id: string; date?: string; status: "completed" | "missed" }) =>
-      apiRequest(`/habits/${v.id}/entries/${v.date ?? isoDate()}`, { method: "PUT", ...json({ status: v.status }) }),
-    [keys.habits, ["habit-entries"], keys.insights],
+    (v: { id: string; date?: string; status: "completed" | "skipped" | "missed"; value?: number | null; note?: string }) =>
+      apiRequest(`/habits/${v.id}/entries/${v.date ?? isoDate()}`, { method: "PUT", ...json({ status: v.status, value: v.value, note: v.note }) }),
+    [keys.habits, ["habit-entries"], ["habit-insights"], keys.insights],
   );
+export const useClearHabitEntry = () =>
+  useAction((v: { id: string; date?: string }) => apiRequest(`/habits/${v.id}/entries/${v.date ?? isoDate()}`, { method: "DELETE" }), [keys.habits, ["habit-entries"], ["habit-insights"], keys.insights], "Habit entry cleared");
 
 export const useCreateNote = () =>
   useAction((v: { title: string }) => apiRequest<{ item: NotePage }>("/notes", { method: "POST", ...json(v) }), [keys.notes]);

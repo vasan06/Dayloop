@@ -5,7 +5,13 @@ import { useCreateEvent, useDeleteEvent, useEvents, useTasks } from "../hooks/da
 import { useNewParam } from "../hooks/useNewParam";
 import { dayKey, isoDate, shortDate, timeOf } from "../lib/format";
 
-const iso = (date: string, time: string) => new Date(`${date}T${time}:00`).toISOString().replace("Z", "+00:00");
+const iso = (date: string, input: string) => {
+  const match = input.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return new Date(`${date}T${input}:00`).toISOString().replace("Z", "+00:00");
+  let hour = Number(match[1]); const minute = match[2]; const meridiem = match[3]?.toUpperCase();
+  if (meridiem) hour = hour % 12 + (meridiem === "PM" ? 12 : 0);
+  return new Date(`${date}T${String(hour).padStart(2, "0")}:${minute}:00`).toISOString().replace("Z", "+00:00");
+};
 
 export default function Calendar() {
   const events = useEvents();
@@ -60,7 +66,7 @@ export default function Calendar() {
           </div>}
         </Card>
       </div>
-      {isNew && <FormModal title="New event" busy={create.isPending} onClose={closeNew} initial={{ date: selected, start: "10:00", end: "11:00" }} fields={[{ name: "title", label: "Title", required: true }, { name: "description", label: "Details", type: "textarea" }, { name: "date", label: "Date", type: "date", required: true }, { name: "start", label: "Starts", type: "text", placeholder: "HH:MM", half: true, required: true }, { name: "end", label: "Ends", type: "text", placeholder: "HH:MM", half: true, required: true }]} onSubmit={(v) => create.mutate({ title: v.title.trim(), description: v.description, start_at: iso(v.date, v.start), end_at: iso(v.date, v.end) }, { onSuccess: closeNew })} />}
+      {isNew && <FormModal title="New event" busy={create.isPending} onClose={closeNew} initial={{ date: selected, start: "10:00 AM", end: "11:00 AM" }} fields={[{ name: "title", label: "Title", required: true }, { name: "description", label: "Details", type: "textarea" }, { name: "date", label: "Date", type: "date", required: true }, { name: "start", label: "Starts", type: "text", placeholder: "10:00 AM", half: true, required: true }, { name: "end", label: "Ends", type: "text", placeholder: "11:00 AM", half: true, required: true }]} onSubmit={(v) => create.mutate({ title: v.title.trim(), description: v.description, start_at: iso(v.date, v.start), end_at: iso(v.date, v.end) }, { onSuccess: closeNew })} />}
     </>
   );
 }

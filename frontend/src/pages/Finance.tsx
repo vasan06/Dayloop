@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 import { Card, CardHead, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Progress, Skeleton } from "../components/ui";
 import { Donut } from "../components/charts";
@@ -55,7 +56,21 @@ export default function Finance() {
         <Card tone="sky" className="s4"><div className="mono">Net</div><div className="big">{money(summary.data?.net)}</div></Card>
 
         <Card className="s7">
-          <CardHead title="Transactions" right={<div className="tabs" style={{ margin: 0 }}>{(["all", "income", "expense"] as const).map((k) => <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{k === "all" ? "All" : k === "income" ? "Income" : "Expenses"}</button>)}</div>} />
+          <CardHead
+            title="Transactions"
+            right={
+              <div className="row wrap" style={{ gap: 8 }}>
+                <Link to="/transactions" className="btn sm ghost">View all</Link>
+                <div className="tabs" style={{ margin: 0 }}>
+                  {(["all", "income", "expense"] as const).map((k) => (
+                    <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>
+                      {k === "all" ? "All" : k === "income" ? "Income" : "Expenses"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            }
+          />
           {txs.isLoading ? <Skeleton rows={5} /> : txs.isError ? <ErrorBox error={txs.error} retry={() => void txs.refetch()} /> : list.length === 0 ? <Empty title="No transactions" hint="Log income or an expense to get started." action={<button className="btn pri sm" onClick={showNew}>Add transaction</button>} /> : (
             <div className="tw"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th style={{ textAlign: "right" }}>Amount</th><th /></tr></thead><tbody>{list.slice(0, 60).map((t) => (
               <tr key={t.id}><td className="mono">{shortDate(t.transaction_date + "T00:00")}</td><td>{t.description || "—"}</td><td><span className="pill">{catName(t.category_id)}</span></td>
@@ -66,7 +81,7 @@ export default function Finance() {
         </Card>
         <div className="s5" style={{ display: "grid", gap: 14, alignContent: "start" }}>
           <Card><CardHead mono="This month" title="Spending mix" />{spend.length ? <div className="rg" style={{ flexWrap: "wrap", justifyContent: "space-around" }}><Donut size={150} slices={spend.map((s, i) => ({ ...s, color: PALETTE[i % PALETTE.length] }))} center={money(spend.reduce((a, s) => a + s.value, 0))} sub="spent" /><ul>{spend.map((s, i) => <li key={s.label}><i style={{ background: PALETTE[i % PALETTE.length] }} />{s.label}</li>)}</ul></div> : <Empty title="No spending yet" hint="Expenses appear here." />}</Card>
-          <Card><CardHead title="Budgets" />{(budgets.data ?? []).length === 0 ? <Empty title="No budgets" hint="Set a monthly limit to stay on track." /> : <div className="list">{budgets.data!.map((b) => { const pct = num(b.total_limit) ? (num(b.spent) / num(b.total_limit)) * 100 : 0; return <div key={b.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{b.name}</b><span className="mono">{money(b.spent, b.currency)} / {money(b.total_limit, b.currency)}</span></div><Progress value={pct} color={pct > 100 ? "var(--rose)" : pct > 80 ? "var(--amber)" : undefined} /></div>; })}</div>}</Card>
+          <Card><CardHead title="Budgets" right={<Link to="/budgets" className="btn sm ghost">Manage</Link>} />{(budgets.data ?? []).length === 0 ? <Empty title="No budgets" hint="Set a monthly limit to stay on track." /> : <div className="list">{budgets.data!.map((b) => { const pct = num(b.total_limit) ? (num(b.spent) / num(b.total_limit)) * 100 : 0; return <div key={b.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{b.name}</b><span className="mono">{money(b.spent, b.currency)} / {money(b.total_limit, b.currency)}</span></div><Progress value={pct} color={pct > 100 ? "var(--rose)" : pct > 80 ? "var(--amber)" : undefined} /></div>; })}</div>}</Card>
           <Card><CardHead title="Savings goals" />{(savings.data ?? []).length === 0 ? <Empty title="No savings goals" hint="Name something you're saving for." /> : <div className="list">{savings.data!.map((s) => <div key={s.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{s.name}</b><span className="mono">{money(s.current_amount, s.currency)} / {money(s.target_amount, s.currency)}</span></div><Progress value={(num(s.current_amount) / Math.max(1, num(s.target_amount))) * 100} /></div>)}</div>}</Card>
         </div>
       </div>

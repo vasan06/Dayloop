@@ -4,9 +4,9 @@ import {
   BarChart3, Bell, CalendarDays, CheckSquare, ChevronsLeft, FolderKanban, Flame, LayoutDashboard, LogOut, Moon,
   NotebookPen, Plus, Repeat, Search, Settings, Sun, Wallet, ArrowUpRight, Command,
 } from "lucide-react";
-import { useHabits, useProfile, useSearch, useTasks } from "../hooks/data";
+import { useHabits, useMarkNotificationRead, useNotifications, useProfile, useSearch, useTasks, useEvents } from "../hooks/data";
 import { initials } from "../lib/format";
-import { GlobalFx, Toaster } from "./ui";
+import { Toaster } from "./ui";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -31,7 +31,11 @@ export function applyTheme(theme: string): void {
 export function Logo({ light = true }: { light?: boolean }) {
   return (
     <span className="logo" style={light ? undefined : { color: "var(--ink)" }}>
-      <svg viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="9" fill="var(--acc)" /><path d="M8 14a6 6 0 1 1 6 6" stroke="var(--acc-ink)" strokeWidth="2.6" strokeLinecap="round" fill="none" /><circle cx="14" cy="20" r="2.4" fill="var(--t-butter)" /></svg>
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="12.5" fill="none" stroke="var(--acc)" strokeWidth="4.5" />
+        <path d="M16 3.5a12.5 12.5 0 0 1 12.5 12.5" fill="none" stroke="var(--amber)" strokeWidth="4.5" strokeLinecap="round" />
+        <circle cx="16" cy="16" r="3.5" fill="#fff" />
+      </svg>
       <span className="lab">dayloop</span>
     </span>
   );
@@ -40,13 +44,18 @@ export function Logo({ light = true }: { light?: boolean }) {
 export default function Shell({ onSignOut }: { onSignOut: () => void }) {
   const [collapsed, setCollapsed] = useState(() => safeGet("dl-rail") === "1");
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [theme, setTheme] = useState(() => safeGet("dl-theme") ?? "system");
+  const [theme, setTheme] = useState(() => safeGet("dl-theme") ?? "light");
   const [entered, setEntered] = useState(true);
+  const [booting, setBooting] = useState(true);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const profile = useProfile();
   const habits = useHabits();
   const tasks = useTasks();
+  const events = useEvents();
+  const notifications = useNotifications(true);
+  const markNotificationRead = useMarkNotificationRead();
 
   useEffect(() => { applyTheme(theme); safeSet("dl-theme", theme); }, [theme]);
   useEffect(() => { safeSet("dl-rail", collapsed ? "1" : "0"); }, [collapsed]);
@@ -61,6 +70,33 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  useEffect(() => {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const today = new Date();
+    const due = (tasks.data ?? []).filter((task) => task.status !== "completed" && task.status !== "cancelled" && task.due_at && new Date(task.due_at) <= today).map((task) => `task:${task.id}`);
+    const eventsDue = (events.data ?? []).filter((event) => new Date(event.start_at) <= today && new Date(event.end_at) >= today).map((event) => `event:${event.id}`);
+    const seenKey = "dayloop:notified";
+    let seen: string[] = [];
+    try { seen = JSON.parse(localStorage.getItem(seenKey) || "[]") as string[]; } catch { /* ignore */ }
+    const fresh = [...due, ...eventsDue].filter((key) => !seen.includes(key));
+    fresh.forEach((key) => {
+      const [kind, id] = key.split(":");
+      const item = kind === "task" ? (tasks.data ?? []).find((task) => task.id === id) : (events.data ?? []).find((event) => event.id === id);
+      if (item) new Notification(kind === "task" ? "Task due" : "Event now", { body: item.title });
+    });
+    if (fresh.length) {
+      try {
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.frequency.value = 660; gain.gain.setValueAtTime(0.04, context.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.22);
+        oscillator.connect(gain).connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + 0.22);
+      } catch { /* browser autoplay/audio policy */ }
+    }
+    try { localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...due, ...eventsDue])].slice(-200))); } catch { /* ignore */ }
+  }, [tasks.data, events.data]);
+
   // Entry animations replay on route change only.
   useEffect(() => {
     setEntered(true);
@@ -69,10 +105,22 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
     return () => window.clearTimeout(t);
   }, [location.pathname]);
 
+  useEffect(() => {
+    const t = window.setTimeout(() => setBooting(false), 1200);
+    return () => window.clearTimeout(t);
+  }, []);
+
   const streak = Math.max(0, ...(habits.data ?? []).map((h) => h.current_streak));
   const overdue = (tasks.data ?? []).filter((t) => t.status !== "completed" && t.status !== "cancelled" && t.due_at && new Date(t.due_at) < new Date()).length;
-  const name = profile.data?.display_name || profile.data?.username || "You";
-  const title = NAV.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)))?.label ?? "DayLoop";
+  const name = profile.data?.username || profile.data?.display_name || "You";
+  
+  // Fixed title lookup with type safety and robust route matching
+  const title = NAV.find((n) =>
+    "end" in n && n.end
+      ? location.pathname === n.to
+      : location.pathname === n.to || location.pathname.startsWith(`${n.to}/`)
+  )?.label ?? "DayLoop";
+
   const nextTheme = theme === "dark" ? "light" : "dark";
 
   return (
@@ -101,14 +149,20 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
           <div className="sp2" />
           <button className="kbar" onClick={() => setPaletteOpen(true)} aria-label="Open command palette"><Search className="ic" /><span>Search or jump to…</span><span className="kbd" style={{ flex: "none" }}>⌘K</span></button>
           <button className="iconbtn" aria-label={`Switch to ${nextTheme} theme`} onClick={() => setTheme(nextTheme)}>{theme === "dark" ? <Sun className="ic" /> : <Moon className="ic" />}</button>
-          <button className="iconbtn" aria-label="Notifications" onClick={() => navigate("/settings")}><Bell className="ic" />{overdue > 0 && <i className="dot" />}</button>
+          <div style={{ position: "relative" }}><button className="iconbtn" aria-label="Notifications" onClick={async () => { setNotificationsOpen((open) => !open); if (typeof Notification !== "undefined" && Notification.permission === "default") await Notification.requestPermission(); }}><Bell className="ic" />{(notifications.data?.length ?? 0) > 0 && <i className="dot" />}</button>{notificationsOpen && <div className="menu" style={{ right: 0, minWidth: 280 }}><b style={{ display: "block", padding: "8px 12px" }}>Notifications</b>{(notifications.data ?? []).slice(0, 4).map((item) => <button key={item.id} onClick={() => markNotificationRead.mutate(item.id)}><span className="t"><b>{item.title}</b><small className="mute">{item.body}</small></span></button>)}</div>}</div>
           <button className="btn pri" onClick={() => navigate(`${location.pathname === "/" ? "/tasks" : location.pathname}?new=1`)}><Plus className="ic" />New</button>
         </div>
         <Outlet />
       </main>
       {paletteOpen && <Palette onClose={() => setPaletteOpen(false)} />}
+      {booting && <div className="boot" role="status" aria-live="polite">
+        <div>
+          <div className="orbit" aria-hidden="true"><i /><i /><i /></div>
+          <div className="bt">Setting up your workspace</div>
+          <div className="msgs"><span>Syncing your tasks</span><span>Drawing your charts</span><span>Almost there</span></div>
+        </div>
+      </div>}
       <Toaster />
-      <GlobalFx />
     </div>
   );
 }
@@ -126,6 +180,10 @@ function Palette({ onClose }: { onClose: () => void }) {
   const go = (to: string) => () => { navigate(to); onClose(); };
   const base: Cmd[] = useMemo(() => [
     ...NAV.map((n) => ({ id: n.to, label: `Go to ${n.label}`, hint: "Page", icon: <n.icon className="ic" />, run: go(n.to) })),
+    { id: "tx", label: "Go to Transactions", hint: "Finance", icon: <Wallet className="ic" />, run: go("/transactions") },
+    { id: "bg", label: "Go to Budgets", hint: "Finance", icon: <Wallet className="ic" />, run: go("/budgets") },
+    { id: "st", label: "Go to Application States", hint: "Testbed", icon: <ArrowUpRight className="ic" />, run: go("/states") },
+    { id: "rs", label: "Go to Responsive Showcase", hint: "Showcase", icon: <ArrowUpRight className="ic" />, run: go("/responsive") },
     { id: "nt", label: "Create task", hint: "Create", icon: <Plus className="ic" />, run: go("/tasks?new=1") },
     { id: "np", label: "Create project", hint: "Create", icon: <Plus className="ic" />, run: go("/projects?new=1") },
     { id: "nh", label: "Create habit", hint: "Create", icon: <Plus className="ic" />, run: go("/habits?new=1") },
@@ -134,8 +192,14 @@ function Palette({ onClose }: { onClose: () => void }) {
     { id: "ne", label: "Add event", hint: "Create", icon: <Plus className="ic" />, run: go("/calendar?new=1") },
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], []);
-  const route = { task: "/tasks", project: "/projects", note: "/notes", habit: "/habits", goal: "/analytics" } as const;
-  const found: Cmd[] = (search.data ?? []).map((r) => ({ id: r.entity_type + r.id, label: r.title, hint: r.entity_type, icon: <ArrowUpRight className="ic" />, run: go(route[r.entity_type] + (r.entity_type === "note" ? `?open=${r.id}` : "")) }));
+  const getRoute = (type: string, id: string) => {
+    if (type === "task") return `/tasks/${id}`;
+    if (type === "project") return `/projects/${id}`;
+    if (type === "note") return `/notes?open=${id}`;
+    if (type === "habit") return "/habits";
+    return "/analytics";
+  };
+  const found: Cmd[] = (search.data ?? []).map((r) => ({ id: r.entity_type + r.id, label: r.title, hint: r.entity_type, icon: <ArrowUpRight className="ic" />, run: go(getRoute(r.entity_type, r.id)) }));
   const filtered = [...base.filter((c) => c.label.toLowerCase().includes(q.toLowerCase())), ...found].slice(0, 12);
   useEffect(() => setIdx(0), [q]);
 
