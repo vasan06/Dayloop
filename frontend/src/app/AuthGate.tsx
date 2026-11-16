@@ -1,8 +1,12 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Eye, EyeOff } from "lucide-react";
+import Landing from "./Landing";
+import { Logo } from "../components/Shell";
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
@@ -45,7 +49,9 @@ const roleOptions = [
   ["other", "Other"],
 ];
 
-export default function AuthGate({ children }: { children: ReactNode }) {
+type Mode = "landing" | "signin" | "signup" | "forgot";
+
+export default function AuthGate({ children }: { children: (signOut: () => void) => ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [localAccess, setLocalAccess] = useState(
     () => import.meta.env.DEV && window.localStorage.getItem("dayloop:local-access") === "true",
@@ -53,7 +59,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
   const [profileError, setProfileError] = useState("");
-  const [register, setRegister] = useState(false);
+  const [mode, setMode] = useState<Mode>("landing");
+  const [showPw, setShowPw] = useState(false);
+  const [info, setInfo] = useState("");
+  const register = mode === "signup";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [draft, setDraft] = useState<ProfileDraft>(emptyProfile);
@@ -120,9 +129,13 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     event.preventDefault();
     if (!firebaseAuth) return;
     setError("");
+    setInfo("");
     setBusy(true);
     try {
-      if (register) {
+      if (mode === "forgot") {
+        await sendPasswordResetEmail(firebaseAuth, email.trim());
+        setInfo("If that email has an account, a reset link is on its way.");
+      } else if (register) {
         await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
       } else {
         await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
@@ -190,68 +203,49 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     }
   }
 
-  if (loading) {
-    return <main className="auth-screen"><div className="auth-card">Connecting your secure workspace…</div></main>;
-  }
+  const strength = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(password)).length;
+  const brand = <div style={{ marginBottom: 28 }}><Logo light={false} /></div>;
+  const shell = (content: ReactNode) => <main className="auth"><div className="l"><div className="fw">{content}</div></div><div className="r" aria-hidden="true"><div className="dev" style={{ width: 260 }}><div className="in"><div className="card tn-mint"><div className="mono">Streak</div><div className="big">12 days</div></div><div className="card"><div className="mono">Today</div><div className="pbar"><i style={{ width: "70%" }} /></div></div></div></div></div></main>;
+
+  if (loading) return <div className="boot" role="status" aria-label="Loading"><div><div className="orbit"><i /><i /><i /></div><div className="bt">Opening your workspace</div><div className="msgs"><span>Connecting securely…</span><span>Syncing tasks…</span><span>Almost there…</span></div></div></div>;
 
   if (profileError && (user || localAccess)) {
-    return <main className="auth-screen"><section className="auth-card">
-      <div className="brand-lockup"><div className="brand-mark"><span /><span /><span /></div><span className="brand-name">dayloop<span>.</span></span></div>
-      <h1>Your workspace is waiting.</h1>
-      <p className="auth-subtitle">We couldn’t load your profile from the DayLoop API.</p>
-      <div className="api-warning">
-        <strong>{profileError}</strong>
-        <p>{profileError.startsWith("Network error:")
-          ? "DayLoop could not reach the API. Check that the backend is running, then retry."
-          : "The API responded but could not load this profile. Retry, or sign out and sign in again if the problem continues."}</p>
-      </div>
-      <button className="primary-button auth-full-button" onClick={() => window.location.reload()}>Retry connection</button>
-      <button className="auth-switch" onClick={() => void leaveWorkspace()}>Sign out</button>
-    </section></main>;
+    return shell(<>{brand}<h1>Can’t reach your workspace</h1><p className="mute">{profileError}</p><p className="mute sm">{profileError.startsWith("Network error:") ? "Check that the DayLoop API is running, then retry." : "Retry, or sign out and sign in again."}</p><button className="btn pri" onClick={() => window.location.reload()}>Retry connection</button><button className="btn ghost" onClick={() => void leaveWorkspace()}>Sign out</button></>);
   }
 
   if (user || localAccess) {
     if (!profileReady) {
-      return <main className="auth-screen"><section className="auth-card profile-setup-card">
-        <div className="brand-lockup"><div className="brand-mark"><span /><span /><span /></div><span className="brand-name">dayloop<span>.</span></span></div>
-        <p className="section-kicker">YOUR ACCOUNT, YOUR WAY</p>
-        <h1>Make this space yours.</h1>
-        <p className="auth-subtitle">Add a few details so your workspace feels personal.</p>
-        <form onSubmit={saveProfile}>
-          <label>Name<input autoComplete="name" maxLength={80} required value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} /></label>
-          <label>Username<input autoComplete="username" minLength={3} maxLength={24} pattern="[A-Za-z0-9_]{3,24}" required value={draft.username} onChange={(event) => setDraft({ ...draft, username: event.target.value.toLowerCase() })} /><small>3–24 letters, numbers, or underscores.</small></label>
-          <div className="profile-setup-grid">
-            <label>Age<input type="number" min={13} max={120} required value={draft.age} onChange={(event) => setDraft({ ...draft, age: event.target.value })} /></label>
-            <label>Role<select required value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })}><option value="" disabled>Select your role</option>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          </div>
-          {error && <p className="auth-error" role="alert">{error}</p>}
-          <button className="primary-button auth-full-button" disabled={busy}>{busy ? "Saving…" : "Continue to DayLoop"}</button>
-        </form>
-        <button className="auth-switch" onClick={() => void leaveWorkspace()}>Sign out</button>
-      </section></main>;
+      return shell(<form onSubmit={saveProfile}>{brand}<div className="mono">Your account, your way</div><h1 style={{ margin: "8px 0 6px" }}>Make this space yours.</h1><p className="mute" style={{ marginTop: 0 }}>A few details to personalise DayLoop.</p>
+        <div className="field"><label htmlFor="p-name">Name</label><input id="p-name" autoComplete="name" maxLength={80} required value={draft.display_name} onChange={(e) => setDraft({ ...draft, display_name: e.target.value })} /></div>
+        <div className="field"><label htmlFor="p-user">Username</label><input id="p-user" autoComplete="username" minLength={3} maxLength={24} pattern="[A-Za-z0-9_]{3,24}" required value={draft.username} onChange={(e) => setDraft({ ...draft, username: e.target.value.toLowerCase() })} /></div>
+        <div className="fr"><div className="field"><label htmlFor="p-age">Age</label><input id="p-age" type="number" min={13} max={120} required value={draft.age} onChange={(e) => setDraft({ ...draft, age: e.target.value })} /></div>
+          <div className="field"><label htmlFor="p-role">Role</label><select id="p-role" required value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })}><option value="" disabled>Select</option>{roleOptions.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div></div>
+        {error && <p className="err" role="alert">{error}</p>}
+        <button className="btn pri" disabled={busy}>{busy ? "Saving…" : "Continue to DayLoop"}</button>
+        <button type="button" className="btn ghost" onClick={() => void leaveWorkspace()}>Sign out</button></form>);
     }
-
-    return <>{children}<button className="signout-button" onClick={() => void leaveWorkspace()}>Sign out</button></>;
+    return <>{children(() => void leaveWorkspace())}</>;
   }
 
-  return <main className="auth-screen">
-    <section className="auth-card">
-      <div className="brand-lockup"><div className="brand-mark"><span /><span /><span /></div><span className="brand-name">dayloop<span>.</span></span></div>
-      <p className="section-kicker">A SPACE THAT MOVES WITH YOU</p>
-      <h1>{register ? "Create your account." : "Welcome back."}</h1>
-      <p className="auth-subtitle">Sign in to your private DayLoop workspace.</p>
-      {!firebaseConfigured && <div className="api-warning">Firebase web authentication is not configured. Add your VITE_FIREBASE_* settings to frontend/.env. In local development, you can still connect to the backend below.</div>}
-      <form onSubmit={submitAuth}>
-        <label>Email address<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-        <label>Password<input type="password" autoComplete={register ? "new-password" : "current-password"} minLength={6} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        {error && <p className="auth-error" role="alert">{error}</p>}
-        <button className="primary-button auth-full-button" disabled={!firebaseAuth || busy}>{busy ? "Please wait…" : register ? "Create account" : "Sign in"}</button>
-      </form>
-      {firebaseAuth && <><div className="auth-divider"><span>or</span></div><button className="google-button" disabled={busy} onClick={() => void signInWithGoogle()}><GoogleMark /> Continue with Google</button></>}
-      <button className="auth-switch" onClick={() => { setRegister((value) => !value); setError(""); }}>{register ? "Already have an account? Sign in" : "New to DayLoop? Create an account"}</button>
-      {import.meta.env.DEV && <div className="local-access"><span>For local backend testing</span><button className="auth-switch" onClick={() => { window.localStorage.setItem("dayloop:local-access", "true"); setLocalAccess(true); setError(""); }}>Continue with local development identity</button></div>}
-    </section>
-  </main>;
+  if (mode === "landing") return <Landing onSignIn={() => setMode("signin")} onSignUp={() => setMode("signup")} />;
+
+  const titles = { signin: "Welcome back.", signup: "Create your account.", forgot: "Reset your password." } as const;
+  return shell(<form onSubmit={submitAuth}>
+    {brand}<h1 style={{ marginBottom: 6 }}>{titles[mode]}</h1>
+    <p className="mute" style={{ marginTop: 0 }}>{mode === "forgot" ? "We’ll email you a reset link." : "Sign in to your private DayLoop workspace."}</p>
+    {!firebaseConfigured && <div className="err" style={{ marginBottom: 14 }}>Firebase configuration is unavailable to this running frontend. Restart the Vite server after saving frontend/.env, or use the local development identity in development.</div>}
+    <div className="field"><label htmlFor="a-email">Email</label><input id="a-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+    {mode !== "forgot" && <div className="field"><label htmlFor="a-pw">Password</label><div className="pw"><input id="a-pw" type={showPw ? "text" : "password"} autoComplete={register ? "new-password" : "current-password"} minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} /><button type="button" aria-label={showPw ? "Hide password" : "Show password"} onClick={() => setShowPw((s) => !s)}>{showPw ? <EyeOff className="ic" /> : <Eye className="ic" />}</button></div>
+      {register && <div className={`meter s${strength}`} aria-hidden="true"><i /><i /><i /><i /></div>}</div>}
+    {error && <p className="err" role="alert">{error}</p>}{info && <p className="mute" role="status">{info}</p>}
+    <button className="btn pri" disabled={!firebaseAuth || busy}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "forgot" ? "Send reset link" : "Sign in"}</button>
+    {firebaseAuth && mode !== "forgot" && <button type="button" className="btn" style={{ marginTop: 10 }} disabled={busy} onClick={() => void signInWithGoogle()}><GoogleMark /> Continue with Google</button>}
+    <div className="row sb sm" style={{ marginTop: 16 }}>
+      <button type="button" className="lnk acc" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(""); setInfo(""); }}>{mode === "signup" ? "Have an account? Sign in" : "New here? Create account"}</button>
+      {mode === "signin" ? <button type="button" className="lnk" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { setMode("forgot"); setError(""); }}>Forgot password?</button> : <button type="button" className="lnk" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { setMode("landing"); setError(""); }}>Back</button>}
+    </div>
+    {import.meta.env.DEV && <button type="button" className="btn ghost sm" style={{ marginTop: 16 }} onClick={() => { window.localStorage.setItem("dayloop:local-access", "true"); setLocalAccess(true); setError(""); }}>Continue with local development identity</button>}
+  </form>);
 }
 
 function GoogleMark() {

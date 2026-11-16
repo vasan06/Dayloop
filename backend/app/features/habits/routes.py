@@ -7,6 +7,32 @@ from app.features.habits.metrics import calculate_habit_metrics
 router = APIRouter(prefix="/habits", tags=["habits"])
 
 
+@router.get("/insights")
+def habit_insights(days: int = 42, user: dict = Depends(get_current_user)) -> dict:
+    days = max(7, min(days, 366))
+    rows = fetch_all(
+        "SELECT e.entry_date,e.status,h.id AS habit_id FROM habit_entries e JOIN habits h ON h.id=e.habit_id "
+        "WHERE h.user_id=%s AND h.archived_at IS NULL AND e.entry_date >= CURRENT_DATE - (%s::int - 1) ORDER BY e.entry_date",
+        (user["id"], days),
+    )
+    by_day: dict = {}
+    for row in rows:
+        day = str(row["entry_date"])
+        item = by_day.setdefault(day, {"completed": 0, "skipped": 0, "scheduled": 0, "active": 0, "streaking": 0})
+        status = row["status"]
+        if status == "completed": item["completed"] += 1; item["streaking"] += 1
+        elif status == "skipped": item["skipped"] += 1
+        if status in {"completed", "skipped"}: item["active"] += 1
+    series = []
+    from datetime import date, timedelta
+    today = date.today()
+    for offset in range(days - 1, -1, -1):
+        day = today - timedelta(days=offset)
+        value = by_day.get(str(day), {"completed": 0, "skipped": 0, "scheduled": 0, "active": 0, "streaking": 0})
+        series.append({"day": str(day), **value, "completion_rate": round(value["completed"] / max(1, value["completed"] + value["skipped"]) * 100)})
+    return {"days": days, "series": series, "streaks": []}
+
+
 @router.get("")
 def get_habits(user: dict = Depends(get_current_user)) -> dict:
     habits = fetch_all(
@@ -38,6 +64,8 @@ def create_habit(payload: dict, user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(
             status_code=422, detail="Habit name is required (maximum 120 characters)."
         )
+    if fetch_one("SELECT id FROM habits WHERE user_id=%s AND lower(name)=lower(%s) AND archived_at IS NULL", (user["id"], name)):
+        raise HTTPException(status_code=409, detail="A habit with this name already exists.")
     schedule_type = payload.get("schedule_type", "daily")
     if schedule_type not in {"daily", "weekly", "custom"}:
         raise HTTPException(status_code=422, detail="Unsupported habit schedule.")
@@ -47,6 +75,7 @@ def create_habit(payload: dict, user: dict = Depends(get_current_user)) -> dict:
         "boolean",
         "quantity",
         "duration",
+        "text",
     }:
         raise HTTPException(status_code=422, detail="Unsupported habit type or measurement.")
     schedule_config = payload.get("schedule_config", {})
@@ -75,6 +104,25 @@ def create_habit(payload: dict, user: dict = Depends(get_current_user)) -> dict:
             (habit["id"], schedule_type, __import__("json").dumps(schedule_config)),
         )
     return {"item": habit}
+
+
+@router.patch("/{habit_id}")
+def update_habit(habit_id: str, payload: dict, user: dict = Depends(get_current_user)) -> dict:
+    current = fetch_one("SELECT * FROM habits WHERE id=%s AND user_id=%s AND archived_at IS NULL", (habit_id, user["id"]))
+    if not current:
+        raise HTTPException(status_code=404, detail="Habit not found.")
+    name = str(payload.get("name", current["name"])).strip()
+    if not name or len(name) > 120:
+        raise HTTPException(status_code=422, detail="Habit name is required (maximum 120 characters).")
+    duplicate = fetch_one("SELECT id FROM habits WHERE user_id=%s AND lower(name)=lower(%s) AND id<>%s AND archived_at IS NULL", (user["id"], name, habit_id))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="A habit with this name already exists.")
+    allowed = {"name", "description", "habit_type", "measurement_type", "target_value", "unit"}
+    values = {key: payload[key] for key in allowed if key in payload}
+    values["name"] = name
+    assignments = ",".join(f"{key}=%s" for key in values)
+    updated = fetch_one(f"UPDATE habits SET {assignments},updated_at=now() WHERE id=%s AND user_id=%s RETURNING *", (*values.values(), habit_id, user["id"]))
+    return {"item": updated}
 
 
 @router.get("/{habit_id}/entries")

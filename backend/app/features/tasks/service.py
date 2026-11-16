@@ -52,6 +52,8 @@ def create_task(user_id: str, payload: dict) -> dict:
         raise HTTPException(
             status_code=422, detail="Task title is required (maximum 240 characters)."
         )
+    if fetch_one("SELECT id FROM tasks WHERE user_id=%s AND lower(title)=lower(%s) AND deleted_at IS NULL", (user_id, title)):
+        raise HTTPException(status_code=409, detail="A task with this name already exists. Use a different name.")
     project_id = validate_uuid(payload.get("project_id"), "project_id")
     parent_id = validate_uuid(payload.get("parent_task_id"), "parent_task_id")
     if payload.get("status", "not_started") not in {
@@ -130,22 +132,24 @@ def update_task(user_id: str, task_id: str, payload: dict) -> dict:
                 status_code=422, detail="A task cannot be moved beneath one of its descendants."
             )
         changes["parent_task_id"] = parent_id
-    assignments = ", ".join(f"{field} = %s" for field in changes)
+    if "status" in changes:
+        changes["completed_at"] = "now()" if changes["status"] == "completed" else None
     if "project_id" in changes:
         changes["project_id"] = validate_uuid(changes["project_id"], "project_id")
         if changes["project_id"] and not fetch_one(
-            "SELECT id FROM projects WHERE id=%s AND user_id=%s AND archived_at IS NULL",
+            "SELECT id FROM projects WHERE id=%s::uuid AND user_id=%s AND archived_at IS NULL",
             (changes["project_id"], user_id),
         ):
             raise HTTPException(status_code=404, detail="Project not found.")
+    assignments = ", ".join(f"{field} = %s" for field in changes if field != "completed_at")
+    values = [value for field, value in changes.items() if field != "completed_at"]
+    if "completed_at" in changes:
+        assignments += ", completed_at = now()" if changes["completed_at"] == "now()" else ", completed_at = NULL"
     updated = fetch_one(
-        f"UPDATE tasks SET {assignments}, updated_at=now(), "
-        "completed_at=CASE WHEN %s='completed' THEN COALESCE(completed_at,now()) "
-        "WHEN %s IS NOT NULL THEN NULL ELSE completed_at END "
+        f"UPDATE tasks SET {assignments}, updated_at=now() "
         "WHERE user_id=%s AND id=%s AND deleted_at IS NULL RETURNING *",
         tuple(
-            list(changes.values())
-            + [changes.get("status"), changes.get("status"), user_id, task_id]
+            values + [user_id, task_id]
         ),
     )
     if not updated:

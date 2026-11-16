@@ -1,243 +1,31 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import {
-  Activity, ArrowUpRight, Bell, CalendarDays, Check, CheckCheck, CheckSquare, ChevronDown,
-  ChevronLeft, ChevronRight, Command, CreditCard, FileText, Flame, FolderKanban,
-  LayoutDashboard, LogOut, Moon, MoreHorizontal, PanelLeft, Plus, Repeat2, Search,
-  Settings, Sun, Trash2, UserRound, WalletCards, X,
-} from 'lucide-react';
-import './styles.css';
-import type { Habit, Note, Page, Project, Task, Transaction } from './types';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter } from "react-router-dom";
+import App from "./app/App";
+import "./styles/app.css";
+import { toast } from "./lib/toast";
 
-type Route = Page;
-type EventItem = { id: string; title: string; date: string; time: string };
-type Data = { tasks: Task[]; projects: Project[]; habits: Habit[]; transactions: Transaction[]; notes: Note[]; events: EventItem[]; budgets: Record<string, number>; profile: { name: string; email: string; currency: string; weekStarts: string } };
-type ModalState = { kind: 'form'; entity: 'task' | 'project' | 'habit' | 'transaction' | 'budget' | 'note' | 'event'; id?: string; projectId?: string } | { kind: 'delete'; entity: 'task' | 'project' | 'habit' | 'transaction' | 'note' | 'account'; id?: string };
-type FormEntity = 'task' | 'project' | 'habit' | 'transaction' | 'budget' | 'note' | 'event';
+const queryClient = new QueryClient({
+  mutationCache: new MutationCache({ onError: (error) => toast(error instanceof Error ? error.message : "Something went wrong.", "error") }),
+  defaultOptions: {
+    queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 },
+  },
+});
 
-const STORAGE_KEY = 'dayloop-react-v1';
-const toISODate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-const TODAY = toISODate(new Date());
-const NAV: { route: Route; label: string; icon: React.ElementType }[] = [
-  { route: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { route: 'tasks', label: 'Tasks', icon: CheckSquare },
-  { route: 'projects', label: 'Projects', icon: FolderKanban },
-  { route: 'habits', label: 'Habits', icon: Repeat2 },
-  { route: 'finance', label: 'Finance', icon: WalletCards },
-  { route: 'notes', label: 'Notes', icon: FileText },
-  { route: 'calendar', label: 'Calendar', icon: CalendarDays },
-  { route: 'analytics', label: 'Analytics', icon: Activity },
-  { route: 'settings', label: 'Profile & settings', icon: UserRound },
-];
-const COLORS = ['#2B4CFF', '#F29A1F', '#12A366', '#8B5CF6', '#E5484D'];
-const CATEGORIES = ['Rent', 'Food', 'Transport', 'Health', 'Other'];
-const addDays = (date: string, days: number) => {
-  const next = new Date(`${date}T12:00:00`);
-  next.setDate(next.getDate() + days);
-  return toISODate(next);
-};
-const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const fmtDate = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-const inr = (amount: number) => `₹${Math.round(amount).toLocaleString('en-IN')}`;
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </QueryClientProvider>
+  </React.StrictMode>,
+);
 
-function createInitialData(): Data {
-  const projects: Project[] = [
-    { id: 'p1', name: 'Major Project', desc: 'Design, build, report and present the final year software systems project.', deadline: addDays(TODAY, 26), status: 'active', color: COLORS[0] },
-    { id: 'p2', name: 'Exam Prep', desc: 'Revision plan and mock tests for the semester exams.', deadline: addDays(TODAY, 16), status: 'active', color: COLORS[1] },
-    { id: 'p3', name: 'Personal', desc: 'Bills, travel and home errands.', deadline: addDays(TODAY, 45), status: 'active', color: COLORS[2] },
-    { id: 'p4', name: 'Portfolio Site', desc: 'Showcase projects and internship work.', deadline: addDays(TODAY, 70), status: 'planned', color: COLORS[3] },
-    { id: 'p5', name: 'Internship Wrap-up', desc: 'Handover and feedback after the internship.', deadline: addDays(TODAY, -10), status: 'completed', color: COLORS[4] },
-  ];
-  const taskSeed: Omit<Task, 'id' | 'due'>[] = [
-    { title: 'Finalise DBMS project report', desc: 'Merge the ER diagram, normalisation steps and test results into one PDF.', priority: 'high', projectId: 'p1', status: 'doing' },
-    { title: 'Review API authentication flow', desc: 'Check token expiry handling and the refresh flow.', priority: 'high', projectId: 'p1', status: 'todo' },
-    { title: 'Prepare viva presentation slides', desc: '12 slides max. Architecture, demo and learnings.', priority: 'med', projectId: 'p1', status: 'todo' },
-    { title: 'Submit internship feedback form', desc: 'HR portal form, needs mentor sign-off.', priority: 'med', projectId: '', status: 'todo' },
-    { title: 'Pay electricity bill', desc: '', priority: 'low', projectId: 'p3', status: 'todo' },
-    { title: 'Book train tickets for Pongal', desc: 'Booking window opens 60 days ahead.', priority: 'med', projectId: 'p3', status: 'todo' },
-    { title: 'Revise operating systems notes', desc: 'Scheduling, deadlocks and paging.', priority: 'med', projectId: 'p2', status: 'doing' },
-    { title: 'Solve 5 DSA problems', desc: '', priority: 'med', projectId: 'p2', status: 'done' },
-    { title: 'Set up CI pipeline', desc: '', priority: 'high', projectId: 'p1', status: 'done' },
-    { title: 'Email mentor about thesis topic', desc: '', priority: 'low', projectId: 'p1', status: 'done' },
-    { title: 'Clean up room and desk', desc: '', priority: 'low', projectId: 'p3', status: 'todo' },
-    { title: 'Mock test: Computer Networks', desc: 'Timed, 90 minutes.', priority: 'high', projectId: 'p2', status: 'todo' },
-    { title: 'Draft portfolio wireframes', desc: '', priority: 'med', projectId: 'p4', status: 'todo' },
-    { title: 'Collect project screenshots', desc: '', priority: 'low', projectId: 'p4', status: 'todo' },
-    { title: 'Hand over documentation', desc: '', priority: 'med', projectId: 'p5', status: 'done' },
-    { title: 'Complete exit survey', desc: '', priority: 'low', projectId: 'p5', status: 'done' },
-  ];
-  return {
-    projects,
-    tasks: taskSeed.map((task, index) => ({ ...task, id: `t${index + 1}`, due: addDays(TODAY, [-1, 0, 4, -2, 2, 6, 1, 0, -3, -1, 8, 9, 44, 46, -18, -16][index]) })),
-    habits: ['Morning run', 'Read 20 pages', 'Code for 1 hour', 'Drink 2.5 L water', 'Sleep by 11 pm'].map((name, index) => {
-      const checks = Array.from({ length: 35 }, (_, day) => (day + index * 2) % (index + 3) !== 0 || day > 28 ? addDays(TODAY, day - 34) : '');
-      return { id: `h${index + 1}`, name, icon: ['R', 'B', 'C', 'W', 'Z'][index], checks: checks.filter(Boolean), streak: [12, 5, 8, 4, 17][index] };
-    }),
-    transactions: [
-      { id: 'x1', type: 'in', title: 'Salary', category: 'Income', amount: 64000, date: addDays(TODAY, -8) },
-      { id: 'x2', type: 'in', title: 'Freelance web project', category: 'Income', amount: 14000, date: addDays(TODAY, -6) },
-      { id: 'x3', type: 'out', title: 'Rent', category: 'Rent', amount: 22000, date: addDays(TODAY, -8) },
-      { id: 'x4', type: 'out', title: 'Lunch with team', category: 'Food', amount: 1800, date: addDays(TODAY, -3) },
-      { id: 'x5', type: 'out', title: 'Metro card', category: 'Transport', amount: 1200, date: addDays(TODAY, -2) },
-      { id: 'x6', type: 'out', title: 'Groceries', category: 'Food', amount: 3200, date: addDays(TODAY, -1) },
-      { id: 'x7', type: 'out', title: 'Internet bill', category: 'Other', amount: 999, date: addDays(TODAY, -1) },
-    ],
-    notes: [
-      { id: 'n1', title: 'Project ideas', body: 'Keep the first version focused on the daily workflow.\\n\\n- A quick capture flow\\n- A clear next action\\n- A weekly review with useful metrics', date: addDays(TODAY, -2), projectId: 'p1' },
-      { id: 'n2', title: 'Reading list', body: 'Books and articles to come back to this month.', date: addDays(TODAY, -5), projectId: 'p2' },
-      { id: 'n3', title: 'Weekend plan', body: 'Book the train, finish the laundry and leave an hour for a long walk.', date: TODAY, projectId: 'p3' },
-    ],
-    events: [
-      { id: 'e1', title: 'Project check-in', date: addDays(TODAY, 1), time: '10:30' },
-      { id: 'e2', title: 'Mentor meeting', date: addDays(TODAY, 3), time: '14:00' },
-      { id: 'e3', title: 'Submit report draft', date: addDays(TODAY, 7), time: '17:00' },
-    ],
-    budgets: { Rent: 24000, Food: 12000, Transport: 5000, Health: 4000, Other: 6000 },
-    profile: { name: 'Keerthivasan R', email: 'keerthivasan22860@gmail.com', currency: 'INR (₹)', weekStarts: 'Monday' },
-  };
-}
-
-function readData(): Data {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return createInitialData();
-  try {
-    return { ...createInitialData(), ...JSON.parse(stored) as Partial<Data> };
-  } catch (error) {
-    console.warn('DayLoop saved workspace data could not be read; starting with sample data.', error);
-    return createInitialData();
-  }
-}
-
-function IconButton({ label, children, onClick, className = '' }: { label: string; children: React.ReactNode; onClick: () => void; className?: string }) {
-  return <button className={`icon-btn ${className}`} type="button" aria-label={label} title={label} onClick={onClick}>{children}</button>;
-}
-function Button({ children, onClick, variant = 'default', className = '', type = 'button' }: { children: React.ReactNode; onClick?: () => void; variant?: 'default' | 'primary' | 'accent' | 'ghost' | 'white'; className?: string; type?: 'button' | 'submit' }) {
-  return <button type={type} onClick={onClick} className={`btn ${variant} ${className}`}>{children}</button>;
-}
-function Card({ children, className = '', title, action }: { children: React.ReactNode; className?: string; title?: string; action?: React.ReactNode; key?: React.Key }) {
-  return <section className={`card ${className}`}>{title && <div className="card-head"><h2>{title}</h2>{action}</div>}{children}</section>;
-}
-function PageTitle({ eyebrow = 'DAYLOOP / WORKSPACE', title, subtitle, action, onAction }: { eyebrow?: string; title: string; subtitle: string; action?: string; onAction?: () => void }) {
-  return <div className="page-title"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="mute">{subtitle}</p></div>{action && <Button variant="primary" onClick={onAction}><Plus size={17} />{action}</Button>}</div>;
-}
-function Empty({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) {
-  return <div className="empty"><div className="empty-art"><FileText size={28} /></div><h3>{title}</h3><p className="mute">{text}</p>{action}</div>;
-}
-function Progress({ value, color }: { value: number; color?: string }) {
-  return <div className="progress" role="progressbar" aria-valuenow={Math.min(100, value)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }} /></div>;
-}
-function Metric({ label, value, note, color = 'blue', spark = [34, 52, 45, 70, 56, 82, 72] }: { label: string; value: React.ReactNode; note: string; color?: string; spark?: number[] }) {
-  return <Card className={`metric tile-${color}`}><div className="metric-label"><span className="mono">{label}</span><span className="pill">{note}</span></div><div className="metric-value">{value}</div><Sparkline points={spark} /></Card>;
-}
-function Sparkline({ points, color = 'currentColor' }: { points: number[]; color?: string }) {
-  const max = Math.max(...points, 1); const min = Math.min(...points, 0);
-  const coords = points.map((point, index) => `${index * 100 / (points.length - 1)},${30 - (point - min) / Math.max(max - min, 1) * 25}`);
-  return <svg className="sparkline" viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true"><polyline points={coords.join(' ')} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-function BarChart({ values, labels, color = 'var(--acc)' }: { values: number[]; labels: string[]; color?: string }) {
-  const max = Math.max(...values, 1);
-  return <div className="bar-chart" role="img" aria-label="Bar chart">{values.map((value, index) => {
-    const height = Math.max(4, value / max * 100);
-    return <div className="bar-col" key={`${labels[index]}-${index}`} style={{ '--bar-height': `${height}%` } as React.CSSProperties}><span className="bar-value">{value}</span><i style={{ height: `${height}%`, background: index === values.length - 1 ? color : undefined }} /><span className="bar-label">{labels[index]}</span></div>;
-  })}</div>;
-}
-function TrendChart({ values, labels, color = 'var(--acc)' }: { values: number[]; labels: string[]; color?: string }) {
-  const max = Math.max(...values, 1); const min = Math.min(...values, 0);
-  const points = values.map((value, index) => `${24 + index * 560 / Math.max(1, values.length - 1)},${190 - (value - min) / Math.max(max - min, 1) * 150}`);
-  return <svg className="trend-chart" viewBox="0 0 610 230" role="img" aria-label="Trend chart">
-    {[40, 78, 116, 154, 192].map(y => <line key={y} x1="24" x2="590" y1={y} y2={y} className="chart-grid" />)}
-    <polyline points={points.join(' ')} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    {points.map((point, index) => <circle key={point} cx={point.split(',')[0]} cy={point.split(',')[1]} r="4" fill="var(--card)" stroke={color} strokeWidth="2" />)}
-    {labels.map((label, index) => <text key={`${label}-${index}`} x={24 + index * 560 / Math.max(1, labels.length - 1)} y="220" textAnchor="middle">{label}</text>)}
-  </svg>;
-}
-function Donut({ values, colors, center, label }: { values: number[]; colors: string[]; center: string; label: string }) {
-  const total = values.reduce((sum, value) => sum + value, 0) || 1;
-  const radius = 44; const circumference = 2 * Math.PI * radius; let offset = 0;
-  return <div className="donut-wrap"><svg className="donut" viewBox="0 0 120 120" role="img" aria-label={`${label}: ${center}`}><circle cx="60" cy="60" r={radius} fill="none" stroke="var(--track)" strokeWidth="12" />{values.map((value, index) => {
-    const length = value / total * circumference; const dash = `${Math.max(0, length - 3)} ${circumference - Math.max(0, length - 3)}`;
-    const segment = <circle key={index} cx="60" cy="60" r={radius} fill="none" stroke={colors[index % colors.length]} strokeWidth="12" strokeDasharray={dash} strokeDashoffset={-offset} transform="rotate(-90 60 60)" />;
-    offset += length; return segment;
-  })}<text x="60" y="58" textAnchor="middle" className="donut-center">{center}</text><text x="60" y="74" textAnchor="middle" className="donut-label">{label}</text></svg></div>;
-}
-function Gauge({ value, label, color = 'var(--acc)' }: { value: number; label: string; color?: string }) {
-  const pct = Math.max(0, Math.min(100, value));
-  return <div className="gauge"><svg viewBox="0 0 120 84" role="img" aria-label={`${pct}% ${label}`}><path d="M12 68A48 48 0 0 1 108 68" pathLength="100" className="gauge-track" /><path d="M12 68A48 48 0 0 1 108 68" pathLength="100" className="gauge-value" style={{ stroke: color, strokeDashoffset: `${100 - pct}` }} /><text x="60" y="59" textAnchor="middle" className="gauge-number">{pct}%</text><text x="60" y="77" textAnchor="middle" className="gauge-label">{label}</text></svg></div>;
-}
-function Heatmap({ days = 35, active }: { days?: number; active?: (date: string) => boolean }) {
-  const dates = Array.from({ length: days }, (_, index) => addDays(TODAY, index - days + 1));
-  const leading = new Date(`${dates[0]}T12:00:00`).getDay();
-  return <><div className="heatmap-week">{['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div><div className="heatmap">{Array.from({ length: leading }, (_, index) => <i className="heat-blank" key={`blank-${index}`} />)}{dates.map((date, index) => <i key={date} title={`${fmtDate(date)}${active?.(date) ? ' · complete' : ''}`} className={`heat-cell heat-${active?.(date) ? 4 : (index * 7 + 3) % 4}`} />)}</div><div className="heat-legend"><span>{fmtDate(dates[0])} to {fmtDate(dates[dates.length - 1])}</span><span>Less <i /> More</span></div></>;
-}
-function TaskRow({ task, projectName, onToggle, onOpen, compact = false }: { task: Task; projectName?: string; onToggle: () => void; onOpen: () => void; compact?: boolean; key?: React.Key }) {
-  return <div className={`task-row ${task.status === 'done' ? 'is-done' : ''}`}>
-    <button className={`task-check ${task.status === 'done' ? 'checked' : ''}`} onClick={onToggle} aria-label={`${task.status === 'done' ? 'Reopen' : 'Complete'} ${task.title}`}>{task.status === 'done' && <Check size={14} />}</button>
-    <button className="task-main" onClick={onOpen}><b>{task.title}</b>{!compact && task.desc && <span className="mute sm">{task.desc}</span>}{compact && <span className="sm mute">{projectName || 'No project'} · {fmtDate(task.due)}</span>}</button>
-    {!compact && <><span className={`pill priority-${task.priority}`}>{task.priority}</span><span className="sm mute task-date">{fmtDate(task.due)}</span><button className="row-more" aria-label="Task options"><MoreHorizontal size={17} /></button></>}
-  </div>;
-}
-function AuthPage({ mode, onMode, onLogin, profileName }: { mode: 'signin' | 'signup' | 'forgot' | 'reset'; onMode: (route: Route) => void; onLogin: (name: string, email: string) => void; profileName: string }) {
-  const [submitted, setSubmitted] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const [formError, setFormError] = useState('');
-  const isSignup = mode === 'signup';
-  const title = mode === 'signin' ? 'Welcome back.' : mode === 'signup' ? 'Make your account.' : mode === 'forgot' ? submitted ? 'Check your inbox.' : 'Forgot your password?' : 'Set a new password.';
-  const subtitle = mode === 'signin' ? 'Sign in to pick up where you left off.' : mode === 'signup' ? 'Free for personal use. Takes a minute.' : mode === 'forgot' ? 'Enter your email and we will send a reset link.' : 'Pick something you have not used before.';
-  return <main className="auth-page"><section className="auth-form">
-    <a className="brand auth-brand" href="#landing"><span className="brand-mark">D</span>DayLoop</a>
-    {mode === 'forgot' && submitted ? <div className="auth-success"><span className="success-icon"><Check size={22} /></span><h1>{title}</h1><p>{subtitle}</p><Button variant="primary" onClick={() => onMode('reset')}>Open reset link <ArrowUpRight size={16} /></Button></div> : <form onSubmit={event => {
-      event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      if (mode === 'forgot') { setSubmitted(true); return; }
-      if (mode === 'reset') {
-        if (form.get('password') !== form.get('confirm')) { setFormError('Passwords do not match. Type the same password in both fields.'); return; }
-        onMode('signin'); return;
-      }
-      onLogin(String(form.get('name') || profileName), String(form.get('email') || ''));
-    }}>
-      <p className="eyebrow">YOUR SPACE, IN SYNC</p><h1>{title}</h1><p className="auth-subtitle">{subtitle}</p>
-      {isSignup && <Field label="Full name"><input name="name" required defaultValue="" placeholder="Your name" /></Field>}
-      <Field label="Email"><input name="email" type="email" required defaultValue={mode === 'signin' ? 'keerthivasan22860@gmail.com' : ''} placeholder="you@example.com" /></Field>
-      {mode !== 'forgot' && <Field label={mode === 'reset' ? 'New password' : 'Password'}><div className="password-field"><input name="password" type={visible ? 'text' : 'password'} required minLength={8} defaultValue={mode === 'signin' ? 'demo-password' : ''} placeholder={isSignup ? 'At least 8 characters' : ''} /><button type="button" onClick={() => setVisible(value => !value)}>{visible ? 'Hide' : 'Show'}</button></div></Field>}
-      {mode === 'reset' && <Field label="Confirm password"><input type={visible ? 'text' : 'password'} name="confirm" required minLength={8} /></Field>}
-      {formError && <p className="form-error" role="alert">{formError}</p>}
-      {mode === 'signin' && <div className="row between auth-options"><label className="row sm"><input type="checkbox" defaultChecked /> Keep me signed in</label><a className="link-accent" href="#forgot">Forgot password?</a></div>}
-      <Button type="submit" variant="primary" className="auth-submit">{mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : 'Update password'} <ArrowUpRight size={16} /></Button>
-      <p className="auth-switch">{mode === 'signin' ? <>New here? <a href="#signup">Create an account</a></> : mode === 'signup' ? <>Already registered? <a href="#signin">Sign in</a></> : <a href="#signin">Back to sign in</a>}</p>
-    </form>}
-  </section><aside className="auth-art"><div className="auth-orbit"><div className="auth-sample-card"><span className="mono">TODAY</span><h3>Make space for what matters.</h3><div className="sample-line"><span className="task-check checked"><Check size={14} /></span>Plan the week</div><div className="sample-line"><span className="task-check" />30 minute deep work</div><div className="sample-line"><span className="task-check" />Evening reflection</div></div><div className="auth-streak"><Flame size={18} /><b>7 day streak</b><span>Keep the loop going</span></div><div className="auth-tip">Press <kbd>Ctrl K</kbd> anywhere to jump to a page or create something.</div></div></aside></main>;
-}
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span>{children}</label>; }
-function LandingPage({ data }: { data: Data }) {
-  const remaining = data.tasks.filter(task => task.status !== 'done').slice(0, 3);
-  return <div className="landing">
-    <nav className="landing-nav"><a className="brand" href="#landing"><span className="brand-mark">D</span>DayLoop</a><div className="landing-links"><a href="#features">Features</a><a href="#how">How it works</a><a className="nav-signin" href="#signin">Sign in</a><Button variant="primary" onClick={() => { location.hash = 'signup'; }}>Start free <ArrowUpRight size={15} /></Button></div></nav>
-    <section className="landing-hero"><div className="landing-copy"><p className="mono">TASKS · HABITS · MONEY · NOTES</p><h1>Your whole week<br />in one <em>calm</em> place.</h1><p>DayLoop puts your tasks, projects, habits, budget, notes and calendar side by side, so you can see how the week is really going.</p><div className="row wrap"><Button variant="primary" onClick={() => { location.hash = 'signup'; }}>Create free account <ArrowUpRight size={16} /></Button><a className="btn" href="#signin">Sign in</a></div><span className="sm mute landing-caption">Free for personal use. No card needed.</span></div>
-      <div className="landing-preview"><div className="preview-orbit orbit-one" /><div className="preview-orbit orbit-two" /><div className="preview-card preview-tasks"><div className="row between"><b>Today</b><span className="pill blue">{remaining.length} tasks</span></div>{remaining.map(task => <div className="sample-line" key={task.id}><span className="task-check" />{task.title}</div>)}</div><div className="preview-card preview-streak"><div className="mono">STREAK</div><div className="row"><Gauge value={80} label="week" color="var(--ink)" /><b>5 days</b></div></div><div className="preview-card preview-score"><div className="row between"><b>Productivity</b><span className="pill ok">+12%</span></div><TrendChart values={[38, 48, 42, 63, 55, 74, 67, 87]} labels={['M', 'T', 'W', 'T', 'F', 'S', 'S', '']} /></div><div className="preview-card preview-saved"><span className="mono">SAVED, 30 DAYS</span><div className="metric-value">{inr(18500)}</div><Progress value={72} color="var(--ink)" /></div></div>
-    </section>
-    <div className="marquee"><div>{[...NAV.slice(1, 8), ...NAV.slice(1, 8)].map((item, index) => <span key={`${item.route}-${index}`}><item.icon size={16} />{item.label}</span>)}</div></div>
-    <section id="features" className="landing-section"><p className="eyebrow">ONE CALM WORKSPACE</p><h2>Everything you plan, in one view.</h2><div className="feature-grid">
-      <Card className="span-7 tile-butter" title="Tasks"><h3 className="feature-title">Deadlines you can see coming.</h3>{remaining.map(task => <div className="sample-line" key={task.id}><span className="task-check" />{task.title}</div>)}</Card>
-      <Card className="span-5 feature-dark" title="Projects"><h3 className="feature-title">Progress that rolls up on its own.</h3><div className="project-rings">{data.projects.slice(0, 3).map((project, index) => <div key={project.id}><Gauge value={[62, 48, 78][index]} label={project.name.split(' ')[0]} color={project.color} /></div>)}</div></Card>
-      <Card className="span-4 tile-lilac" title="Habits"><h3>Streaks, as a heatmap.</h3><Heatmap active={date => data.habits.some(habit => habit.checks.includes(date))} /></Card>
-      <Card className="span-4 tile-mint" title="Money"><h3>Budgets that talk back.</h3><div className="row"><Donut values={[36, 25, 16, 13, 10]} colors={COLORS} center={inr(27800)} label="spent" /><div className="sm">Track income, spending and monthly budgets together.</div></div></Card>
-      <Card className="span-4 tile-sky" title="Command palette"><h3>Jump anywhere with a keystroke.</h3><div className="fake-search"><Search size={16} /> Go to Finance <kbd>Ctrl K</kbd></div><p className="sm mute">Create a task, open a note, or move between pages without losing focus.</p></Card>
-      <Card className="span-8" title="Analytics"><h3>Know whether it was a good week.</h3><TrendChart values={[44, 59, 52, 68, 61, 81, 76, 91]} labels={['M', 'T', 'W', 'T', 'F', 'S', 'S', '']} /></Card>
-      <Card className="span-4 tile-blush" title="Notes and calendar"><h3>Write next to the work.</h3>{data.events.map(event => <div className="timeline-item" key={event.id}><b>{event.title}</b><span className="sm mute">{fmtDate(event.date)} · {event.time}</span></div>)}</Card>
-    </div></section>
-    <section id="how" className="landing-section how-section"><p className="eyebrow">A SIMPLE LOOP</p><h2>Plan it, do it, look back.</h2><div className="steps">{[['01', 'Capture', 'Add tasks, notes and expenses in seconds from the New menu or the palette.'], ['02', 'Focus', 'Your dashboard names the one thing to do next, so you can just start.'], ['03', 'Review', 'Charts show streaks, spending and completion so next week starts smarter.']].map(([number, title, copy]) => <Card key={number}><span className="mono">{`STEP ${number}`}</span><h3>{title}</h3><p className="mute">{copy}</p></Card>)}</div></section>
-    <section className="landing-cta"><h2>Start with one task.</h2><Button variant="accent" onClick={() => { location.hash = 'signup'; }}>Create free account <ArrowUpRight size={16} /></Button></section>
-    <footer className="landing-footer"><a className="brand" href="#landing"><span className="brand-mark">D</span>DayLoop</a><span>A design prototype with sample data.</span><a href="#signin">Sign in</a></footer>
-  </div>;
-}
-
-function App() {
-  const [data, setData] = useState<Data>(readData);
-  const [route, setRoute] = useState<Route | string>(() => location.hash.slice(1) || 'landing');
-  const [authed, setAuthed] = useState(() => localStorage.getItem('dayloop-signed-in') === 'true');
-  const [dark, setDark] = useState(() => {
-    const preference = localStorage.getItem('dayloop-theme');
-    return preference ? preference === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js");
   });
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('dayloop-rail') === 'collapsed');
   const [modal, setModal] = useState<ModalState | null>(null);

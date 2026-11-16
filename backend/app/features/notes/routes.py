@@ -74,6 +74,18 @@ def save_blocks(page_id: str, payload: dict, user: dict = Depends(get_current_us
         "callout",
         "code",
         "divider",
+        "heading_1",
+        "heading_2",
+        "heading_3",
+        "heading_4",
+        "heading_5",
+        "heading_6",
+        "paragraph",
+        "checkbox",
+        "progress",
+        "toggle",
+        "page",
+        "columns",
     }
     with get_connection() as connection:
         connection.execute("DELETE FROM note_blocks WHERE page_id=%s", (page_id,))

@@ -24,7 +24,8 @@ def calculate_habit_metrics(habit: dict, entries: list[dict], today: date | None
             if status == "completed":
                 current_streak += 1
             elif status == "skipped":
-                pass
+                cursor -= timedelta(days=1)
+                continue
             else:
                 break
         cursor -= timedelta(days=1)
@@ -34,12 +35,21 @@ def calculate_habit_metrics(habit: dict, entries: list[dict], today: date | None
         for offset in range(30)
         if habit_is_scheduled(start_window + timedelta(days=offset), schedule_type, schedule_config)
     ]
-    completed_days = sum(1 for day in scheduled_days if by_date.get(day) == "completed")
+    counted_days = [day for day in scheduled_days if by_date.get(day) != "skipped"]
+    completed_days = sum(1 for day in counted_days if by_date.get(day) == "completed")
+    streak_start = (local_today - timedelta(days=current_streak - 1)) if current_streak else None
+    completed_dates = sorted(day for day in scheduled_days if by_date.get(day) == "completed")
     return {
         "current_streak": current_streak,
         "completed_today": completed_today,
-        "consistency_30d": round(completed_days / len(scheduled_days) * 100)
-        if scheduled_days
+        "current_streak_start": streak_start,
+        "current_streak_end": local_today if current_streak else None,
+        "previous_streak_start": completed_dates[0] if completed_dates else None,
+        "previous_streak_end": completed_dates[-1] if completed_dates else None,
+        "previous_streak_days": len(completed_dates),
+        "last_break_date": next((day for day in reversed(scheduled_days) if by_date.get(day) in {"missed", "failed"}), None),
+        "consistency_30d": round(completed_days / len(counted_days) * 100)
+        if counted_days
         else 0,
-        "scheduled_days_30d": len(scheduled_days),
+        "scheduled_days_30d": len(counted_days),
     }

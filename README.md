@@ -7,7 +7,7 @@ DayLoop is a personal-first life workspace combining Notion-inspired knowledge m
 - Python application code uses cohesive `def` / `async def` functions; no authored application classes.
 - PostgreSQL is the only application database. No MongoDB, SQLite or Redis.
 - Free/open-source-first development, local attachment storage and no mandatory paid infrastructure.
-- React function components, responsive layouts and a distinctive warm editorial visual identity.
+- React function components, responsive layouts and a distinctive cool-grey, cobalt-accent visual identity.
 
 ## Implemented foundation
 - React + TypeScript + Vite frontend, custom design tokens, responsive dashboard and PWA shell caching.
@@ -82,3 +82,20 @@ psql -U dayloop -h 127.0.0.1 -p 5432 -d dayloop
 
 ## Known incomplete areas
 The API and database require PostgreSQL to be running with a configured role/password. Email and browser-push delivery adapters, full offline mutation queue/conflict sync, recurring task scheduler, advanced task timeline/dependency UI, rich note collections/backlinks/revisions, deeper analytics beyond the current progress charts, learning/journal/reviews, data export/backup and full end-to-end/browser/security tests remain to be completed. The PWA service worker currently caches the application shell only; it does not claim full offline data synchronization.
+
+
+## Frontend (v3 design)
+
+The UI follows the approved "bento" design: floating collapsible rail, command palette (Ctrl/⌘ K, or `/`), light/dark themes, animated SVG charts.
+
+- Styles: `frontend/src/styles/app.css` (design tokens at the top).
+- Shell, palette, shared UI: `frontend/src/components/`.
+- Pages: `frontend/src/pages/` (Dashboard, Tasks, Projects, Habits, Finance, Notes, Calendar, Analytics, Settings). Landing and auth live in `frontend/src/app/`.
+- Data layer: `frontend/src/hooks/data.ts` (TanStack Query hooks, one per API endpoint).
+
+### New backend endpoints
+
+- `GET /api/v1/insights/overview?days=N` – daily tasks/habits/finance series used by the dashboard and analytics.
+- `DELETE /api/v1/habits/{id}`, `/notes/{id}`, `/calendar/events/{id}`, `/finance/transactions/{id}` – archive / delete / void.
+
+No new migrations are required.
