@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3, Bell, CalendarDays, CheckSquare, ChevronsLeft, FolderKanban, Flame, LayoutDashboard, LogOut, Moon,
-  NotebookPen, Plus, Repeat, Search, Settings, Sun, Wallet, ArrowUpRight, Command,
+  NotebookPen, Plus, Repeat, Search, Sun, Wallet, ArrowUpRight, Command, UserCircle,
 } from "lucide-react";
 import { useHabits, useMarkNotificationRead, useNotifications, useProfile, useSearch, useTasks, useEvents } from "../hooks/data";
 import { initials } from "../lib/format";
@@ -17,7 +18,6 @@ const NAV = [
   { to: "/notes", label: "Notes", icon: NotebookPen },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
-  { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
 const safeGet = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
@@ -31,11 +31,7 @@ export function applyTheme(theme: string): void {
 export function Logo({ light = true }: { light?: boolean }) {
   return (
     <span className="logo" style={light ? undefined : { color: "var(--ink)" }}>
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <circle cx="16" cy="16" r="12.5" fill="none" stroke="var(--acc)" strokeWidth="4.5" />
-        <path d="M16 3.5a12.5 12.5 0 0 1 12.5 12.5" fill="none" stroke="var(--amber)" strokeWidth="4.5" strokeLinecap="round" />
-        <circle cx="16" cy="16" r="3.5" fill="#fff" />
-      </svg>
+      <img src="/dayloop-mark.svg" alt="" width="28" height="28" />
       <span className="lab">dayloop</span>
     </span>
   );
@@ -46,8 +42,9 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState(() => safeGet("dl-theme") ?? "light");
   const [entered, setEntered] = useState(true);
-  const [booting, setBooting] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const profile = useProfile();
@@ -59,6 +56,19 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
 
   useEffect(() => { applyTheme(theme); safeSet("dl-theme", theme); }, [theme]);
   useEffect(() => { safeSet("dl-rail", collapsed ? "1" : "0"); }, [collapsed]);
+  useEffect(() => { setProfileOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      const trigger = Array.from(document.querySelectorAll(".profile-trigger")).some((node) => node.contains(target));
+      if (!profileMenuRef.current?.contains(target) && !trigger) setProfileOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setProfileOpen(false); };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeyDown); };
+  }, [profileOpen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -105,23 +115,27 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
     return () => window.clearTimeout(t);
   }, [location.pathname]);
 
-  useEffect(() => {
-    const t = window.setTimeout(() => setBooting(false), 1200);
-    return () => window.clearTimeout(t);
-  }, []);
 
   const streak = Math.max(0, ...(habits.data ?? []).map((h) => h.current_streak));
   const overdue = (tasks.data ?? []).filter((t) => t.status !== "completed" && t.status !== "cancelled" && t.due_at && new Date(t.due_at) < new Date()).length;
   const name = profile.data?.username || profile.data?.display_name || "You";
   
   // Fixed title lookup with type safety and robust route matching
-  const title = NAV.find((n) =>
-    "end" in n && n.end
-      ? location.pathname === n.to
-      : location.pathname === n.to || location.pathname.startsWith(`${n.to}/`)
-  )?.label ?? "DayLoop";
+  const routeTitles = [
+    ...NAV.map((item) => ({ path: item.to, label: item.label })),
+    { path: "/transactions", label: "Transactions" },
+    { path: "/budgets", label: "Budgets" },
+    { path: "/profile", label: "Profile" },
+    { path: "/states", label: "Application states" },
+    { path: "/responsive", label: "Responsive showcase" },
+  ];
+  const title = location.pathname.startsWith("/tasks/") ? "Task details"
+    : location.pathname.startsWith("/projects/") ? "Project details"
+      : routeTitles.find((item) => location.pathname === item.path || (item.path !== "/" && location.pathname.startsWith(`${item.path}/`)))?.label ?? "DayLoop";
 
   const nextTheme = theme === "dark" ? "light" : "dark";
+
+  useEffect(() => { document.title = `${title} · DayLoop`; }, [title]);
 
   return (
     <div className="app">
@@ -139,8 +153,18 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
         ))}
         <div className="sp" />
         <div className="streak hide"><span className="fl"><Flame className="ic" /></span><div><b>{streak}-day streak</b><div className="sm" style={{ opacity: 0.7 }}>{streak ? "Keep the loop going" : "Check in a habit today"}</div></div></div>
-        <div className="me"><span className="av">{initials(name)}</span><div className="lab" style={{ minWidth: 0, flex: 1 }}><b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</b><span className="sm" style={{ opacity: 0.7 }}>{profile.data?.username ? `@${profile.data.username}` : ""}</span></div>
-          <button className="rbtn lab" aria-label="Sign out" title="Sign out" onClick={onSignOut}><LogOut className="ic" /></button></div>
+        <div className="me">
+          <button className="av profile-avatar profile-trigger" aria-label="Open profile menu" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}>{initials(name)}</button>
+          <button className="profile-identity lab" onClick={() => navigate("/profile")} style={{ minWidth: 0, flex: 1 }}><b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</b><span className="sm" style={{ opacity: 0.7 }}>{profile.data?.username ? `@${profile.data.username}` : "Your profile"}</span></button>
+          {profileOpen && createPortal(
+            <div ref={profileMenuRef} className="profile-menu profile-menu-portal" role="menu" aria-label="Account menu" style={{ left: collapsed ? 78 : 18 }}>
+              <div className="profile-menu-heading"><span className="profile-menu-avatar">{initials(name)}</span><span><b>{name}</b><small>{profile.data?.username ? "@"+profile.data.username : "Personal workspace"}</small></span></div>
+              <button role="menuitem" onClick={() => { setProfileOpen(false); navigate("/profile"); }}><UserCircle className="ic" />Profile & settings</button>
+              <button role="menuitem" onClick={() => { setProfileOpen(false); onSignOut(); }}><LogOut className="ic" />Log out</button>
+            </div>,
+            document.body
+          )}
+        </div>
       </nav>
 
       <main className={`main ${entered ? "enter" : ""}`} id="main">
@@ -148,20 +172,16 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
           <div className="mono crumb"><span>DayLoop</span><span>/</span><b style={{ color: "var(--ink)" }}>{title}</b></div>
           <div className="sp2" />
           <button className="kbar" onClick={() => setPaletteOpen(true)} aria-label="Open command palette"><Search className="ic" /><span>Search or jump to…</span><span className="kbd" style={{ flex: "none" }}>⌘K</span></button>
+          <button className="iconbtn mobile-profile-trigger profile-trigger" aria-label="Open profile menu" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}><UserCircle className="ic" /></button>
           <button className="iconbtn" aria-label={`Switch to ${nextTheme} theme`} onClick={() => setTheme(nextTheme)}>{theme === "dark" ? <Sun className="ic" /> : <Moon className="ic" />}</button>
           <div style={{ position: "relative" }}><button className="iconbtn" aria-label="Notifications" onClick={async () => { setNotificationsOpen((open) => !open); if (typeof Notification !== "undefined" && Notification.permission === "default") await Notification.requestPermission(); }}><Bell className="ic" />{(notifications.data?.length ?? 0) > 0 && <i className="dot" />}</button>{notificationsOpen && <div className="menu" style={{ right: 0, minWidth: 280 }}><b style={{ display: "block", padding: "8px 12px" }}>Notifications</b>{(notifications.data ?? []).slice(0, 4).map((item) => <button key={item.id} onClick={() => markNotificationRead.mutate(item.id)}><span className="t"><b>{item.title}</b><small className="mute">{item.body}</small></span></button>)}</div>}</div>
-          <button className="btn pri" onClick={() => navigate(`${location.pathname === "/" ? "/tasks" : location.pathname}?new=1`)}><Plus className="ic" />New</button>
+          {!["/calendar", "/habits"].includes(location.pathname) && <button className="btn pri" onClick={() => navigate(`${location.pathname === "/" ? "/tasks" : location.pathname}?new=1`)}><Plus className="ic" />New</button>}
         </div>
-        <Outlet />
+        <Suspense fallback={<div className="route-loading" role="status"><span className="orbit" aria-hidden="true"><i /><i /><i /></span><span>Loading page…</span></div>}>
+          <Outlet />
+        </Suspense>
       </main>
       {paletteOpen && <Palette onClose={() => setPaletteOpen(false)} />}
-      {booting && <div className="boot" role="status" aria-live="polite">
-        <div>
-          <div className="orbit" aria-hidden="true"><i /><i /><i /></div>
-          <div className="bt">Setting up your workspace</div>
-          <div className="msgs"><span>Syncing your tasks</span><span>Drawing your charts</span><span>Almost there</span></div>
-        </div>
-      </div>}
       <Toaster />
     </div>
   );
@@ -180,6 +200,7 @@ function Palette({ onClose }: { onClose: () => void }) {
   const go = (to: string) => () => { navigate(to); onClose(); };
   const base: Cmd[] = useMemo(() => [
     ...NAV.map((n) => ({ id: n.to, label: `Go to ${n.label}`, hint: "Page", icon: <n.icon className="ic" />, run: go(n.to) })),
+    { id: "settings", label: "Go to Settings", hint: "Account", icon: <UserCircle className="ic" />, run: go("/profile") },
     { id: "tx", label: "Go to Transactions", hint: "Finance", icon: <Wallet className="ic" />, run: go("/transactions") },
     { id: "bg", label: "Go to Budgets", hint: "Finance", icon: <Wallet className="ic" />, run: go("/budgets") },
     { id: "st", label: "Go to Application States", hint: "Testbed", icon: <ArrowUpRight className="ic" />, run: go("/states") },

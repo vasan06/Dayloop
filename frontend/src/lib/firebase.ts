@@ -11,17 +11,23 @@ const firebaseConfig = {
   measurementId: String(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ?? "").trim(),
 };
 
-export const firebaseConfigured = Boolean(
-  firebaseConfig.apiKey &&
-  firebaseConfig.authDomain &&
-  firebaseConfig.projectId &&
-  firebaseConfig.appId,
-);
+const requiredConfig: Array<[string, string]> = [
+  ["VITE_FIREBASE_API_KEY", firebaseConfig.apiKey],
+  ["VITE_FIREBASE_AUTH_DOMAIN", firebaseConfig.authDomain],
+  ["VITE_FIREBASE_PROJECT_ID", firebaseConfig.projectId],
+  ["VITE_FIREBASE_APP_ID", firebaseConfig.appId],
+];
+
+export const firebaseMissingConfig = requiredConfig
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+
+export const firebaseConfigured = firebaseMissingConfig.length === 0;
+
+const existingDefaultApp = getApps().find((app) => app.name === "[DEFAULT]");
 
 export const firebaseApp = firebaseConfigured
-  ? getApps().length
-    ? getApp()
-    : initializeApp(firebaseConfig)
+  ? existingDefaultApp ?? initializeApp(firebaseConfig)
   : null;
 
 export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null;

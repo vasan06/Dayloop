@@ -1,21 +1,22 @@
+import { lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import AuthGate from "./AuthGate";
 import Shell from "../components/Shell";
-import Dashboard from "../pages/Dashboard";
-import Tasks from "../pages/Tasks";
-import Projects from "../pages/Projects";
-import Habits from "../pages/Habits";
-import Finance from "../pages/Finance";
-import Notes from "../pages/Notes";
-import Calendar from "../pages/Calendar";
-import Analytics from "../pages/Analytics";
-import Settings from "../pages/Settings";
-import AppStates from "../pages/AppStates";
-import Responsive from "../pages/Responsive";
-import TaskDetail from "../pages/TaskDetail";
-import ProjectDetail from "../pages/ProjectDetail";
-import Transactions from "../pages/Transactions";
-import Budgets from "../pages/Budgets";
+const Dashboard = lazy(() => import("../pages/Dashboard"));
+const Tasks = lazy(() => import("../pages/Tasks"));
+const Projects = lazy(() => import("../pages/Projects"));
+const Habits = lazy(() => import("../pages/Habits"));
+const Finance = lazy(() => import("../pages/Finance"));
+const Notes = lazy(() => import("../pages/Notes"));
+const Calendar = lazy(() => import("../pages/Calendar"));
+const Analytics = lazy(() => import("../pages/Analytics"));
+const Profile = lazy(() => import("../pages/Profile"));
+const AppStates = lazy(() => import("../pages/AppStates"));
+const Responsive = lazy(() => import("../pages/Responsive"));
+const TaskDetail = lazy(() => import("../pages/TaskDetail"));
+const ProjectDetail = lazy(() => import("../pages/ProjectDetail"));
+const Transactions = lazy(() => import("../pages/Transactions"));
+const Budgets = lazy(() => import("../pages/Budgets"));
 
 export default function App() {
   return (
@@ -35,7 +36,8 @@ export default function App() {
             <Route path="notes" element={<Notes />} />
             <Route path="calendar" element={<Calendar />} />
             <Route path="analytics" element={<Analytics />} />
-            <Route path="settings" element={<Settings />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="settings" element={<Navigate to="/profile" replace />} />
             <Route path="states" element={<AppStates />} />
             <Route path="responsive" element={<Responsive />} />
             <Route path="*" element={<Navigate to="/" replace />} />

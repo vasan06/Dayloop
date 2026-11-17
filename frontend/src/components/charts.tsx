@@ -85,32 +85,50 @@ export type HabitActivityChartPoint = {
   day: string; completed: number; skipped: number; scheduled: number; active: number; streaking: number; completion_rate: number;
 };
 
-/** Combined habit progress: completion bars with active and streaking habit lines. */
-export function HabitProgressChart({ points, height = 220 }: { points: HabitActivityChartPoint[]; height?: number }) {
-  const W = 640, H = height, L = 36, R = 12, T = 18, B = 30;
-  const maxActive = Math.max(1, ...points.map((p) => Math.max(p.active, p.streaking)));
-  const x = (i: number) => L + (i * (W - L - R)) / Math.max(1, points.length - 1);
-  const yRate = (v: number) => T + (1 - Math.max(0, Math.min(100, v)) / 100) * (H - T - B);
-  const yCount = (v: number) => T + (1 - v / maxActive) * (H - T - B);
-  const path = (key: "active" | "streaking") => smooth(points.map((p, i) => [x(i), yCount(p[key])] as [number, number]));
-  const every = Math.max(1, Math.ceil(points.length / 7));
-  return (
-    <svg className="chart habit-progress-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Combined habit progress chart">
-      {[0, 25, 50, 75, 100].map((v) => <g key={v}><line className="gl" x1={L} x2={W - R} y1={yRate(v)} y2={yRate(v)} /><text x={L - 8} y={yRate(v) + 3} textAnchor="end" fontSize="9">{v}%</text></g>)}
-      {points.map((p, i) => {
-        const bw = Math.max(3, Math.min(20, ((W - L - R) / Math.max(1, points.length)) * .62));
-        const rate = Math.max(0, Math.min(100, p.completion_rate));
-        return <g key={p.day} data-tip={`${new Date(`${p.day}T00:00:00`).toLocaleDateString("en", { weekday: "short", month: "short", day: "numeric" })}\n${p.completed} habits completed · ${p.skipped} skipped\n${Math.round(rate)}% completion\nActive: ${p.active} · Streaking: ${p.streaking}`}>
-          <rect x={x(i) - bw / 2} y={yRate(rate)} width={bw} height={Math.max(2, yRate(0) - yRate(rate))} rx={bw / 2} fill="var(--acc)" opacity=".72" />
-          {i % every === 0 && <text x={x(i)} y={H - 8} textAnchor="middle" fontSize="9">{new Date(`${p.day}T00:00:00`).toLocaleDateString("en", { day: "numeric", month: "short" })}</text>}
-        </g>;
-      })}
-      <path className="ln" d={path("active")} fill="none" stroke="var(--amber)" strokeWidth="2.5" strokeLinecap="round" />
-      <path className="ln" d={path("streaking")} fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" />
-      <circle cx={W - 155} cy={13} r={4} fill="var(--amber)" /><text x={W - 147} y={16} fontSize="9">active</text>
-      <circle cx={W - 88} cy={13} r={4} fill="var(--green)" /><text x={W - 80} y={16} fontSize="9">streaking</text>
-    </svg>
-  );
+/** Daily completion volume with a percentage trend and clear summary metrics. */
+export function HabitProgressChart({ points, height = 360 }: { points: HabitActivityChartPoint[]; height?: number }) {
+  const W = 1120, H = height, L = 64, R = 62, T = 34, B = 52;
+  const maxCount = Math.max(1, ...points.map(p => Math.max(p.scheduled, p.completed + p.skipped)));
+  const countStep = Math.max(1, Math.ceil(maxCount / 4));
+  const countMax = countStep * 4;
+  const x = (i:number) => L + (i * (W-L-R)) / Math.max(1,points.length-1);
+  const yCount = (v:number) => T + (1-Math.max(0,v)/countMax)*(H-T-B);
+  const yRate = (v:number) => T + (1-Math.max(0,Math.min(100,v))/100)*(H-T-B);
+  const linePath = (values:number[], scale:(value:number)=>number) => values.map((value,i)=>(i?"L":"M")+x(i)+","+scale(value)).join(" ");
+  const ratePath = linePath(points.map(p=>p.completion_rate),yRate);
+  const activePath = linePath(points.map(p=>p.active),yCount);
+  const every = Math.max(1,Math.ceil(points.length/9));
+  const totalCompleted = points.reduce((sum,p)=>sum+p.completed,0);
+  const totalScheduled = points.reduce((sum,p)=>sum+Math.max(p.scheduled,p.completed+p.skipped),0);
+  const averageRate = totalScheduled ? Math.round(totalCompleted/totalScheduled*100) : 0;
+  const latest = points[points.length-1];
+  const bestDay = points.reduce((best,p)=>p.completion_rate>best.completion_rate?p:best,points[0]);
+  const bestLabel = bestDay ? new Date(bestDay.day+"T00:00:00").toLocaleDateString("en",{day:"numeric",month:"short"}) : "—";
+  return <div className="habit-analytics">
+    <div className="habit-chart-topline"><div><span className="habit-chart-eyebrow">LAST {points.length} DAYS</span><p>Daily check-ins and consistency, together.</p></div><span className="habit-chart-period">Daily view</span></div>
+    <div className="habit-chart-legend">
+      <span><i className="completed" />Completed</span><span><i className="skipped" />Skipped</span><span><i className="rate" />Completion rate</span><span><i className="active" />Logged habits</span>
+    </div>
+    <div className="habit-chart-scroll">
+      <svg className="chart habit-progress-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Daily completed and skipped habits as stacked bars, with completion rate and active habits as trend lines">
+        {[0,1,2,3,4].map(step=>{const y=T+step*(H-T-B)/4;return <g key={step}><line className="gl" x1={L} x2={W-R} y1={y} y2={y}/><text className="habit-axis-count" x={L-12} y={y+4} textAnchor="end">{countMax-step*countStep}</text><text className="habit-axis-rate" x={W-R+12} y={y+4}>{100-step*25}%</text></g>})}
+        {points.map((p,i)=>{const bw=Math.max(5,Math.min(18,((W-L-R)/Math.max(1,points.length))*.62));const completed=Math.max(0,p.completed),skipped=Math.max(0,p.skipped);const yCompleted=yCount(completed);const yTotal=yCount(completed+skipped);const bottom=yCount(0);const rate=Math.max(0,Math.min(100,p.completion_rate));return <g key={p.day} data-tip={new Date(p.day+"T00:00:00").toLocaleDateString("en",{weekday:"long",day:"numeric",month:"long"})+" · "+completed+" completed · "+skipped+" skipped · "+Math.round(rate)+"% completion · "+p.active+" logged habits"}>
+          <rect x={x(i)-bw/2} y={yCompleted} width={bw} height={Math.max(0,bottom-yCompleted)} rx={2} fill="var(--green)" opacity=".9"/>
+          <rect x={x(i)-bw/2} y={yTotal} width={bw} height={Math.max(0,yCompleted-yTotal)} rx={2} fill="var(--rose)" opacity=".72"/>
+          {i%every===0&&<text x={x(i)} y={H-16} textAnchor="middle" className="habit-axis-date">{new Date(p.day+"T00:00:00").toLocaleDateString("en",{day:"numeric",month:"short"})}</text>}
+        </g>})}
+        <path d={activePath} fill="none" stroke="var(--amber)" strokeWidth="2.5" strokeDasharray="5 5" strokeLinecap="round" />
+        <path d={ratePath} fill="none" stroke="var(--acc)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((p,i)=><g key={p.day+"-points"}><circle cx={x(i)} cy={yRate(p.completion_rate)} r={points.length>24?2.3:3.8} fill="var(--acc)" stroke="var(--card)" strokeWidth="2"/><circle cx={x(i)} cy={yCount(p.active)} r={points.length>24?1.8:2.8} fill="var(--amber)" stroke="var(--card)" strokeWidth="1.5"/></g>)}
+      </svg>
+    </div>
+    <div className="habit-chart-stats">
+      <div><span>COMPLETED CHECK-INS</span><b>{totalCompleted}</b><small>Across the selected period</small></div>
+      <div><span>AVERAGE COMPLETION</span><b>{averageRate}%</b><small>Completed vs scheduled</small></div>
+      <div><span>LOGGED TODAY</span><b>{latest?.active ?? 0}</b><small>{latest?.streaking ?? 0} completed today</small></div>
+      <div><span>BEST DAY</span><b>{bestDay?Math.round(bestDay.completion_rate)+"%":"—"}</b><small>{bestLabel} · completion rate</small></div>
+    </div>
+  </div>;
 }
 
 export type Slice = { label: string; value: number; color: string };

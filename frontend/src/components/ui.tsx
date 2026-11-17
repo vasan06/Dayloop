@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { Check, CircleAlert, X } from "lucide-react";
 import type { ToastDetail } from "../lib/toast";
 
@@ -16,7 +16,7 @@ export function CardHead({ title, mono, right }: { title?: string; mono?: string
 }
 
 export function Seg<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
-  return <div className="seg" role="tablist">{options.map(([v, l]) => <button key={v} role="tab" aria-selected={v === value} className={v === value ? "on" : ""} onClick={() => onChange(v)}>{l}</button>)}</div>;
+  return <div className="seg" role="group" aria-label="Chart time range">{options.map(([v, l]) => <button key={v} type="button" aria-pressed={v === value} className={v === value ? "on" : ""} onClick={() => onChange(v)}>{l}</button>)}</div>;
 }
 
 export function PageHead({ title, sub, children }: { title: string; sub?: string; children?: ReactNode }) {
@@ -42,17 +42,51 @@ export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void 
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useEffect(() => {
-    const prev = document.activeElement as HTMLElement | null;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const focusable = () => Array.from(ref.current?.querySelectorAll<HTMLElement>(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    ) ?? []);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        ref.current?.focus();
+      } else if (!ref.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
     window.addEventListener("keydown", onKey);
-    ref.current?.querySelector<HTMLElement>("input,select,textarea,button")?.focus();
-    return () => { window.removeEventListener("keydown", onKey); prev?.focus(); };
+    focusable()[0]?.focus();
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
   }, [onClose]);
   return (
-    <div className="ov" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} ref={ref}>
-        <div className="row sb" style={{ marginBottom: 14 }}><h2 style={{ fontSize: 18 }}>{title}</h2><button className="iconbtn" aria-label="Close" onClick={onClose} style={{ width: 34, height: 34 }}><X className="ic" /></button></div>
+    <div className="ov" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref} tabIndex={-1}>
+        <div className="row sb" style={{ marginBottom: 14 }}><h2 id={titleId} style={{ fontSize: 18 }}>{title}</h2><button type="button" className="iconbtn" aria-label="Close" onClick={onClose} style={{ width: 34, height: 34 }}><X className="ic" /></button></div>
         {children}
       </div>
     </div>

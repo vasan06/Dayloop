@@ -30,7 +30,7 @@ export default function Habits() {
   return (
     <>
       <PageHead title="Habits" sub={list.length ? `${done} of ${list.length} done today` : "Small things, done daily"}><button className="btn pri" onClick={showNew}><Plus className="ic" />New habit</button></PageHead>
-      <Card className="s12"><CardHead mono="All habits" title="Combined progress" />{insights.isError ? <ErrorBox error={insights.error} retry={() => void insights.refetch()} /> : insights.isLoading ? <Skeleton rows={3} /> : insights.data?.series?.length ? <HabitProgressChart points={insights.data.series} /> : <Empty title="No habit activity yet" hint="Check in a habit to start the combined chart." />}</Card>
+      <Card className="s12"><CardHead mono="All habits" title="Combined progress" />{insights.isError ? <ErrorBox error={insights.error} retry={() => void insights.refetch()} /> : insights.isLoading ? <Skeleton rows={3} /> : insights.data?.series?.some((point) => point.completed || point.skipped || point.scheduled || point.active) ? <HabitProgressChart points={insights.data.series} /> : <Empty title="No habit activity yet" hint="Check in a habit to start the combined chart." />}</Card>
       {habits.isLoading ? <Card><Skeleton rows={4} /></Card> : habits.isError ? <ErrorBox error={habits.error} retry={() => void habits.refetch()} /> : list.length === 0 ? <Card><Empty title="No habits yet" hint="Pick one small habit and check in daily to build a streak." action={<button className="btn pri sm" onClick={showNew}>Create habit</button>} /></Card> : (
         <div className="pc">{list.map((h, i) => (
           <Card key={h.id} i={i} tone={h.completed_today ? "mint" : undefined}>

@@ -28,8 +28,8 @@ DayLoop is a personal-first life workspace combining Notion-inspired knowledge m
    `CREATE ROLE dayloop LOGIN PASSWORD 'choose-a-local-password';`
    `CREATE DATABASE dayloop OWNER dayloop;`
 2. Copy root `.env.example` to `.env`. Set `DATABASE_URL` to the password and database created above. Keep `DAYLOOP_AUTH_MODE=development` only for local development.
-3. In Git Bash, create the backend environment once if needed: `cd /d/dayloop/backend`, `python -m venv .venv`, `source .venv/Scripts/activate`, `python -m pip install -r requirements.txt`. Apply migrations deliberately with `python -m app.db.migrate`. Then start the API manually with `python app.py`; logs appear directly in this terminal.
-4. In a second Git Bash terminal: `cd /d/dayloop/frontend`, then `npm install` if needed, then `npm run dev -- --host 0.0.0.0 --port 5174 --strictPort`. Open `http://127.0.0.1:5174`.
+3. In Git Bash, create the backend environment once if needed: `cd /d/dayloop/backend`, `python -m venv .venv`, `source .venv/Scripts/activate`, `python -m pip install -r requirements.txt`. Apply migrations deliberately with `python -m app.db.migrate`.
+4. From the repository root, run `npm.cmd run dev` (or `python backend/app.py`). This single command starts FastAPI and Vite together and streams both services' logs in the same terminal. Open `http://127.0.0.1:5173`. Press `Ctrl+C` once to stop both.
 5. Copy `frontend/.env.example` to `frontend/.env` and add your Firebase web app settings to enable email/password and Google sign-in. For local API-only testing, use **Continue with local development identity** on the sign-in page.
 6. Optional in-app reminder worker: in another Git Bash terminal run `cd /d/dayloop/backend`, activate `.venv`, then run `python -m app.worker`.
 
@@ -45,29 +45,29 @@ DayLoop is a personal-first life workspace combining Notion-inspired knowledge m
 - Backend tests (Git Bash): `cd /d/dayloop/backend && .venv/Scripts/python.exe -m pytest -q`
 - Backend syntax (Git Bash): `cd /d/dayloop/backend && .venv/Scripts/python.exe -m compileall -q app tests app.py`
 
-## Run DayLoop manually (Git Bash only)
+## Run DayLoop (one terminal)
 
-Backend terminal:
+From the repository root in Git Bash or Windows Terminal:
+
 ```bash
-cd /d/dayloop/backend
-source .venv/Scripts/activate
-python app.py
+npm.cmd run dev
 ```
 
-The backend runs in the foreground and prints startup, request access, warning and error logs in this terminal. Keep it open; press `Ctrl+C` to stop it.
+Equivalent direct command:
 
-Frontend terminal:
 ```bash
-cd /d/dayloop/frontend
-npm run dev -- --host 0.0.0.0 --port 5174 --strictPort
+python backend/app.py
 ```
 
-Health check from a third Git Bash terminal:
+This starts FastAPI on `http://127.0.0.1:8000` and Vite on `http://127.0.0.1:5173`. Both services' output is streamed into this same terminal with `[frontend]` prefixes for Vite logs. The frontend proxies `/api` requests to FastAPI. Press `Ctrl+C` once to stop both services.
+
+The launcher checks ports 8000 and 5173 before startup. It only stops an existing process when it can verify that the process is this DayLoop API or this repository's Vite server. If another application owns either port, it leaves that process untouched and reports the conflict.
+
+Health check (optional, from another terminal):
+
 ```bash
 curl -i http://127.0.0.1:8000/api/v1/health
 ```
-
-Do not start a second backend while one is already listening on port 8000. If startup reports an address-in-use error, identify and stop the existing DayLoop backend process before starting another.
 
 Database shell (when needed):
 ```bash
@@ -75,7 +75,7 @@ psql -U dayloop -h 127.0.0.1 -p 5432 -d dayloop
 ```
 
 ## URLS
-- App: `http://127.0.0.1:5174`
+- App: `http://127.0.0.1:5173`
 - Backend API: `http://127.0.0.1:8000`
 - API documentation: `http://127.0.0.1:8000/docs`
 - Backend health: `http://127.0.0.1:8000/api/v1/health`
