@@ -11,7 +11,7 @@ export default function Landing({ onSignIn, onSignUp }: { onSignIn: () => void; 
     <div className="land enter">
       <nav className="lnav" aria-label="Site"><Logo light={false} />
         <a className="lk" href="#features">Features</a><a className="lk" href="#how">How it works</a>
-        <button className="lk" onClick={onSignIn}>Sign in</button><button className="btn pri sm" onClick={onSignUp}>Get started</button></nav>
+        <button className="lk sign-in-link" onClick={onSignIn}>Sign in</button><button className="btn pri sm" onClick={onSignUp}>Get started</button></nav>
       <header className="lh">
         <div>
           <div className="mono">Tasks · Habits · Money · Notes</div>

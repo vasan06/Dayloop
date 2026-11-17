@@ -51,9 +51,9 @@ export default function Finance() {
         <button className="btn pri" onClick={showNew}><Plus className="ic" />Transaction</button>
       </PageHead>
       <div className="g">
-        <Card tone="mint" className="s4"><div className="mono">Income · {summary.data?.month}</div><div className="big">{money(summary.data?.income)}</div></Card>
-        <Card tone="blush" className="s4"><div className="mono">Expenses</div><div className="big">{money(summary.data?.expenses)}</div></Card>
-        <Card tone="sky" className="s4"><div className="mono">Net</div><div className="big">{money(summary.data?.net)}</div></Card>
+        <Card tone="mint" className="s4"><div className="mono">Income · {summary.data?.month}</div><div className="big">{summary.isLoading ? "—" : money(summary.data?.income)}</div></Card>
+        <Card tone="blush" className="s4"><div className="mono">Expenses</div><div className="big">{summary.isLoading ? "—" : money(summary.data?.expenses)}</div></Card>
+        <Card tone="sky" className="s4"><div className="mono">Net</div><div className="big">{summary.isLoading ? "—" : money(summary.data?.net)}</div></Card>
 
         <Card className="s7">
           <CardHead
@@ -80,9 +80,9 @@ export default function Finance() {
           )}
         </Card>
         <div className="s5" style={{ display: "grid", gap: 14, alignContent: "start" }}>
-          <Card><CardHead mono="This month" title="Spending mix" />{spend.length ? <div className="rg" style={{ flexWrap: "wrap", justifyContent: "space-around" }}><Donut size={150} slices={spend.map((s, i) => ({ ...s, color: PALETTE[i % PALETTE.length] }))} center={money(spend.reduce((a, s) => a + s.value, 0))} sub="spent" /><ul>{spend.map((s, i) => <li key={s.label}><i style={{ background: PALETTE[i % PALETTE.length] }} />{s.label}</li>)}</ul></div> : <Empty title="No spending yet" hint="Expenses appear here." />}</Card>
-          <Card><CardHead title="Budgets" right={<Link to="/budgets" className="btn sm ghost">Manage</Link>} />{(budgets.data ?? []).length === 0 ? <Empty title="No budgets" hint="Set a monthly limit to stay on track." /> : <div className="list">{budgets.data!.map((b) => { const pct = num(b.total_limit) ? (num(b.spent) / num(b.total_limit)) * 100 : 0; return <div key={b.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{b.name}</b><span className="mono">{money(b.spent, b.currency)} / {money(b.total_limit, b.currency)}</span></div><Progress value={pct} color={pct > 100 ? "var(--rose)" : pct > 80 ? "var(--amber)" : undefined} /></div>; })}</div>}</Card>
-          <Card><CardHead title="Savings goals" />{(savings.data ?? []).length === 0 ? <Empty title="No savings goals" hint="Name something you're saving for." /> : <div className="list">{savings.data!.map((s) => <div key={s.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{s.name}</b><span className="mono">{money(s.current_amount, s.currency)} / {money(s.target_amount, s.currency)}</span></div><Progress value={(num(s.current_amount) / Math.max(1, num(s.target_amount))) * 100} /></div>)}</div>}</Card>
+          <Card><CardHead mono="This month" title="Spending mix" />{txs.isLoading ? <Skeleton rows={3} /> : spend.length ? <div className="rg" style={{ flexWrap: "wrap", justifyContent: "space-around" }}><Donut size={150} slices={spend.map((s, i) => ({ ...s, color: PALETTE[i % PALETTE.length] }))} center={money(spend.reduce((a, s) => a + s.value, 0))} sub="spent" /><ul>{spend.map((s, i) => <li key={s.label}><i style={{ background: PALETTE[i % PALETTE.length] }} />{s.label}</li>)}</ul></div> : <Empty title="No spending yet" hint="Expenses appear here." />}</Card>
+          <Card><CardHead title="Budgets" right={<Link to="/budgets" className="btn sm ghost">Manage</Link>} />{budgets.isLoading ? <Skeleton rows={3} /> : (budgets.data ?? []).length === 0 ? <Empty title="No budgets" hint="Set a monthly limit to stay on track." /> : <div className="list">{budgets.data!.map((b) => { const pct = num(b.total_limit) ? (num(b.spent) / num(b.total_limit)) * 100 : 0; return <div key={b.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{b.name}</b><span className="mono">{money(b.spent, b.currency)} / {money(b.total_limit, b.currency)}</span></div><Progress value={pct} color={pct > 100 ? "var(--rose)" : pct > 80 ? "var(--amber)" : undefined} /></div>; })}</div>}</Card>
+          <Card><CardHead title="Savings goals" />{savings.isLoading ? <Skeleton rows={3} /> : (savings.data ?? []).length === 0 ? <Empty title="No savings goals" hint="Name something you're saving for." /> : <div className="list">{savings.data!.map((s) => <div key={s.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{s.name}</b><span className="mono">{money(s.current_amount, s.currency)} / {money(s.target_amount, s.currency)}</span></div><Progress value={(num(s.current_amount) / Math.max(1, num(s.target_amount))) * 100} /></div>)}</div>}</Card>
         </div>
       </div>
 

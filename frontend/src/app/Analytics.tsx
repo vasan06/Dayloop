@@ -68,7 +68,7 @@ export function OverviewAnalytics({ tasks, habits, transactions, goals }: { task
   const statuses = useMemo(() => {
     const counts = new Map<string, number>();
     tasks.forEach((task) => counts.set(task.status, (counts.get(task.status) ?? 0) + 1));
-    return Array.from(counts, ([name, value]) => ({ name: name.replaceAll("_", " "), value }));
+    return Array.from(counts, ([name, value]) => ({ name: name.replace(/_/g, " "), value }));
   }, [tasks]);
   const activeGoals = goals.filter((goal) => goal.status === "active" && Number(goal.target_value) > 0);
   return <section className="analytics-section">

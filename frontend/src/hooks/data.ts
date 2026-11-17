@@ -104,7 +104,7 @@ export const useDeleteNote = () =>
 export const useSaveBlocks = () => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; blocks: { type: string; content: { text: string } }[] }) =>
+    mutationFn: (v: { id: string; blocks: { type: string; content: { text: string; checked?: boolean; details?: string; columns?: [string, string] } }[] }) =>
       apiRequest(`/notes/${v.id}/blocks`, { method: "PUT", ...json({ blocks: v.blocks }) }),
     onSuccess: (_d, v) => {
       void client.invalidateQueries({ queryKey: keys.notes });

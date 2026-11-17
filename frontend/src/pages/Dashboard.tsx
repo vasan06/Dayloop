@@ -39,6 +39,34 @@ export default function Dashboard() {
   const windowed = series.slice(-Number(range));
   const labels = windowed.map((d) => new Date(d.day + "T00:00").toLocaleDateString("en", { day: "numeric", month: range === "7" ? undefined : "short", weekday: range === "7" ? "short" : undefined }));
   const week = series.slice(-7);
+  const previousWeek = series.slice(-14, -7);
+  const fourWeeksEarlier = series.slice(-28, -21);
+  const periodTotal = (days: typeof series, key: "tasks_completed" | "habits_done" | "income" | "expenses") =>
+    days.reduce((total, day) => total + num(day[key]), 0);
+  const percentChange = (current: number, previous: number, hasPrevious: boolean) => {
+    if (!hasPrevious) return "—";
+    if (previous === 0) return current > 0 ? "New" : "—";
+    const change = Math.round(((current - previous) / previous) * 100);
+    return `${change > 0 ? "+" : ""}${change}%`;
+  };
+  const comparisons = [
+    { name: "Tasks completed", key: "tasks_completed" as const, format: (value: number) => String(Math.round(value)) },
+    { name: "Habit check-ins", key: "habits_done" as const, format: (value: number) => String(Math.round(value)) },
+    { name: "Income", key: "income" as const, format: (value: number) => money(value) },
+    { name: "Expenses", key: "expenses" as const, format: (value: number) => money(value) },
+  ].map((metric) => {
+    const current = periodTotal(week, metric.key);
+    const previous = periodTotal(previousWeek, metric.key);
+    const earlier = periodTotal(fourWeeksEarlier, metric.key);
+    return {
+      name: metric.name,
+      current: metric.format(current),
+      previous: previousWeek.length === 7 ? metric.format(previous) : "—",
+      earlier: fourWeeksEarlier.length === 7 ? metric.format(earlier) : "—",
+      spark: [earlier, previous, current],
+      change: percentChange(current, previous, previousWeek.length === 7),
+    };
+  });
   const gauge = dueTodayTotal ? (doneToday / dueTodayTotal) * 100 : open.length ? 0 : 100;
   const net = num(summary.data?.net);
   const progress = useMemo(() => projectProgress(t), [t]);
@@ -58,7 +86,7 @@ export default function Dashboard() {
   const toggle = (id: string, done: boolean, el: HTMLElement) => { update.mutate({ id, status: done ? "not_started" : "completed" }); if (!done) confetti(el); };
 
   return (
-    <div className="g">
+    <div className="g dashboard-page">
       <section className="hero s12" style={{ "--i": 0 } as React.CSSProperties}>
         <svg className="bg" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><circle cx="720" cy="40" r="170" fill="var(--acc)" opacity=".35" /><circle cx="90" cy="300" r="130" fill="var(--violet)" opacity=".18" /></svg>
         <div>
@@ -201,33 +229,28 @@ export default function Dashboard() {
       </Card>
 
       <Card className="s12" i={17}>
-        <CardHead mono="Review" title="Progress compared" right={<span className="sm mute">This week vs previous weeks</span>} />
+        <CardHead mono="Review" title="Period comparison" right={<span className="sm mute">Rolling 7-day windows · live workspace data</span>} />
         <div className="tw">
           <table>
             <thead>
               <tr>
                 <th>Measure</th>
-                <th>This week</th>
-                <th>Last week</th>
-                <th>4 weeks ago</th>
+                <th>Last 7 days</th>
+                <th>Previous 7 days</th>
+                <th>4 weeks earlier</th>
                 <th>Trend</th>
                 <th>Change</th>
               </tr>
             </thead>
             <tbody>
-              {[
-                { name: "Tasks completed", cur: doneToday + (week.reduce((a, d) => a + d.tasks_completed, 0)), prev: 27, prev4: 21, spark: [21, 24, 27, 32], change: "+19%" },
-                { name: "Habit completion", cur: `${h.length ? Math.round((habitsDone / h.length) * 100) : 0}%`, prev: "71%", prev4: "64%", spark: [64, 67, 71, 78], change: "+7 pts" },
-                { name: "Focus score", cur: "81", prev: "74", prev4: "66", spark: [66, 70, 74, 81], change: "+7" },
-                { name: "Spending", cur: money(summary.data?.expenses), prev: "₹14,200", prev4: "₹13,100", spark: [13.1, 13.8, 14.2, 11.8], change: "-17%" },
-              ].map((r) => (
+              {comparisons.map((r) => (
                 <tr key={r.name}>
                   <td><b>{r.name}</b></td>
-                  <td className="num">{r.cur}</td>
-                  <td className="num mute">{r.prev}</td>
-                  <td className="num mute">{r.prev4}</td>
+                  <td className="num">{r.current}</td>
+                  <td className="num mute">{r.previous}</td>
+                  <td className="num mute">{r.earlier}</td>
                   <td style={{ width: 120 }}><Spark values={r.spark} color="var(--acc)" /></td>
-                  <td><span className="pill ok">{r.change}</span></td>
+                  <td><span className="pill">{r.change}</span></td>
                 </tr>
               ))}
             </tbody>
