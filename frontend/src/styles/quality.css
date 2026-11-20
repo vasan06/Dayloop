@@ -136,7 +136,7 @@ button:disabled { cursor: not-allowed; }
 .calendar-day { min-width: 0; }
 .calendar-chip { max-width: 100%; }
 
-.note-editor { min-width: 0; gap: 16px; }
+.note-editor { min-width: 0; gap: 16px; max-height:calc(100dvh - 180px); }
 .note-title-input { max-width: 100%; font-size: clamp(24px, 3vw, 32px); }
 .block-editor { min-height: 340px; }
 .editor-block { gap: 7px; }

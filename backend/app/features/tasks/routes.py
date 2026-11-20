@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
+from app.core.database import fetch_one
 from app.features.tasks.service import (
     create_task,
     delete_task,
@@ -50,3 +51,39 @@ def remove_task(task_id: str, user: dict = Depends(get_current_user)) -> Respons
 @router.put("/{task_id}/dependencies")
 def put_dependencies(task_id: str, payload: dict, user: dict = Depends(get_current_user)) -> dict:
     return {"items": set_task_dependencies(user["id"], task_id, payload.get("depends_on", []))}
+
+
+@router.get("/{task_id}/notes")
+def get_task_notes(task_id: str, user: dict = Depends(get_current_user)) -> dict:
+    task = fetch_one(
+        "SELECT id FROM tasks WHERE id=%s AND user_id=%s AND deleted_at IS NULL",
+        (task_id, user["id"]),
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    note = fetch_one(
+        "SELECT blocks,updated_at FROM task_notes WHERE task_id=%s AND user_id=%s",
+        (task_id, user["id"]),
+    )
+    return {"items": note["blocks"] if note else [], "updated_at": note["updated_at"] if note else None}
+
+
+@router.put("/{task_id}/notes")
+def save_task_notes(task_id: str, payload: dict, user: dict = Depends(get_current_user)) -> dict:
+    task = fetch_one(
+        "SELECT id FROM tasks WHERE id=%s AND user_id=%s AND deleted_at IS NULL",
+        (task_id, user["id"]),
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    blocks = payload.get("blocks")
+    if not isinstance(blocks, list) or len(blocks) > 1000:
+        raise HTTPException(status_code=422, detail="Task notes must contain at most 1000 blocks.")
+    import json
+    note = fetch_one(
+        "INSERT INTO task_notes(task_id,user_id,blocks) VALUES (%s,%s,%s::jsonb) "
+        "ON CONFLICT (task_id,user_id) DO UPDATE SET blocks=EXCLUDED.blocks,updated_at=now() "
+        "RETURNING blocks,updated_at",
+        (task_id, user["id"], json.dumps(blocks)),
+    )
+    return {"items": note["blocks"], "updated_at": note["updated_at"]}

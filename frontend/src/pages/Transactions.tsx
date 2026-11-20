@@ -165,15 +165,6 @@ export default function Transactions() {
 
   return (
     <>
-      {/* Breadcrumbs */}
-      <div className="row mono" style={{ gap: 8, fontSize: 13, marginBottom: 8 }}>
-        <Link to="/finance" className="lnk" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <ArrowLeft className="ic" style={{ width: 14, height: 14 }} />
-          Finance
-        </Link>
-        <span style={{ opacity: 0.5 }}>/</span>
-        <span style={{ color: "var(--ink)", fontWeight: 500 }}>Transactions</span>
-      </div>
 
       <PageHead title="Transactions" sub={`${allTxs.length} recorded entries`}>
         <button className="btn pri" onClick={() => setIsNewOpen(true)}>

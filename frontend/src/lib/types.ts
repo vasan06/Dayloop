@@ -37,6 +37,12 @@ export type Habit = {
   measurement_type: "boolean" | "quantity" | "duration" | "text";
   target_value: number | null;
   unit: string | null;
+  question: string;
+  target_type: "at_least" | "at_most";
+  reminder_config: Record<string, unknown>;
+  frequency_config: Record<string, unknown>;
+  color: string | null;
+  daily_note_required: boolean;
   schedule_type: "daily" | "weekly" | "custom" | null;
   schedule_config: { weekdays?: number[] } | null;
   current_streak: number;
@@ -59,7 +65,7 @@ export type HabitInsights = {
   series: HabitActivityPoint[];
   streaks: Array<{ habit_id: string; name: string; current_streak: number; previous_streak_start: string | null; previous_streak_end: string | null; previous_streak_days: number; last_break_date: string | null }>;
 };
-export type Notification = { id: string; title: string; body: string; source_type: string | null; source_id: string | null; read_at: string | null; created_at: string };
+export type Notification = { id: string; title: string; body: string; source_type: string | null; source_id: string | null; read_at: string | null; created_at: string; click_path?: string | null };
 
 export type NotePage = { id: string; title: string; icon: string | null; is_favorite: boolean; updated_at: string; created_at: string };
 export type NoteBlock = { id?: string; block_type: string; content: { text?: string }; position?: number };
@@ -118,6 +124,8 @@ export type Profile = {
   role: string | null;
   photo_url: string | null;
   timezone: string | null;
+  onboarding_completed: boolean;
+  tour_completed: boolean;
 };
 
 export type InsightDay = {
@@ -127,6 +135,9 @@ export type InsightDay = {
   habits_done: number;
   income: number | string;
   expenses: number | string;
+  projects_created: number;
+  events_count: number;
+  notes_created: number;
 };
 export type Insights = {
   days: number;

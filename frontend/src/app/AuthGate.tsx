@@ -22,6 +22,8 @@ type Profile = {
   username: string | null;
   age: number | null;
   role: string | null;
+  onboarding_completed: boolean;
+  tour_completed: boolean;
 };
 
 type ProfileDraft = {
@@ -91,6 +93,15 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
   const [draft, setDraft] = useState<ProfileDraft>(emptyProfile);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
+  const [demoTodos, setDemoTodos] = useState(["Review project brief", "Plan the week"]);
+  const [demoTodoInput, setDemoTodoInput] = useState("");
+  const [demoHabitDone, setDemoHabitDone] = useState(false);
+  const [demoSeconds, setDemoSeconds] = useState(25 * 60);
+  const [demoTimerRunning, setDemoTimerRunning] = useState(false);
+  const [demoTransactions, setDemoTransactions] = useState([2400, -850, -320]);
+  const [demoFinanceInput, setDemoFinanceInput] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -110,6 +121,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
           age: profile?.age ? String(profile.age) : "",
           role: profile?.role || "",
         });
+        if (profile && complete && !profile.tour_completed) setTourOpen(true);
       } catch (reason) {
         if (active) {
           setProfileError(reason instanceof Error ? reason.message : "Could not load your profile.");
@@ -163,7 +175,24 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
         await sendPasswordResetEmail(firebaseAuth, email.trim());
         setInfo("If that email has an account, a reset link is on its way.");
       } else if (register) {
+        const username = draft.username.trim();
+        const usernameValid = username.length >= 3 && username.length <= 24 && Array.from(username).every((character) => /[a-zA-Z0-9_]/.test(character));
+        if (!usernameValid || !draft.role || Number(draft.age) < 13 || Number(draft.age) > 120) {
+          setError("Use a 3–24 character username, choose a role and enter a realistic age.");
+          setBusy(false);
+          return;
+        }
         await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+        await apiRequest("/profile", {
+          method: "PUT",
+          body: JSON.stringify({
+            display_name: draft.display_name.trim() || email.trim().split("@")[0],
+            username: draft.username.trim(),
+            age: Number(draft.age),
+            role: draft.role,
+            onboarding_completed: false,
+          }),
+        });
       } else {
         await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
       }
@@ -204,9 +233,11 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
           username: draft.username.trim(),
           age: Number(draft.age),
           role: draft.role,
+          onboarding_completed: true,
         }),
       });
       setProfileReady(true);
+      setTourOpen(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save your profile.");
     } finally {
@@ -230,6 +261,17 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
     }
   }
 
+  useEffect(() => {
+    if (!demoTimerRunning) return;
+    const timer = window.setInterval(() => setDemoSeconds((seconds) => {
+      if (seconds <= 1) {
+        setDemoTimerRunning(false);
+        return 0;
+      }
+      return seconds - 1;
+    }), 1000);
+    return () => window.clearInterval(timer);
+  }, [demoTimerRunning]);
   const strength = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(password)).length;
   const passwordMatches = confirmPassword.length > 0 && password === confirmPassword;
   useEffect(() => {
@@ -253,20 +295,34 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
         <div className="fw">{content}</div>
       </section>
       <aside className="r auth-demo" aria-label="Interactive DayLoop product demonstration">
-        <div className="auth-aside-top"><Logo /><span className="mono">A calmer way to keep life moving</span></div>
+        <div className="auth-aside-top"><Logo /><span className="mono">YOUR WORKSPACE</span></div>
         <div className="auth-aside-content">
           <div className="auth-preview-heading">
-            <div><span className="mono">A QUICK LOOK INSIDE DAYLOOP</span><h2>Make room for what matters.</h2><p>One connected workspace for the moving parts of your day.</p></div>
-            <span className="auth-live"><i /> PRODUCT TOUR</span>
+            <div><span className="mono">LIVE PREVIEW</span><h2>Make room for what matters.</h2><p>One connected workspace for the moving parts of your day.</p></div>
           </div>
           <div className="auth-demo-tabs" role="tablist" aria-label="Explore DayLoop features">
             {([["tasks","Tasks"],["habits","Habits"],["focus","Focus"],["finance","Finance"]] as const).map(([key,label]) => <button type="button" role="tab" aria-selected={demoView===key} className={demoView===key?"active":""} key={key} onClick={()=>setDemoView(key)}>{label}</button>)}
           </div>
           <div className="auth-demo-stage" role="tabpanel">
-            {demoView === "tasks" && <div className="demo-task-view"><div className="demo-stage-top"><span>MONDAY · MY DAY</span><b>4 of 6 done</b></div><div className="demo-progress-track"><i style={{width:"67%"}} /></div>{[["Review project brief","09:30","done"],["Plan the week","10:15","done"],["Design exploration","11:00","active"],["Team check-in","14:00","pending"]].map(([name,time,state])=><div className={"demo-task "+state} key={name}><span className="demo-check">{state==="done"?"✓":state==="active"?"↗":""}</span><b>{name}</b><small>{time}</small></div>)}</div>}
-            {demoView === "habits" && <div className="demo-habit-view"><div className="demo-stage-top"><span>WEEKLY CONSISTENCY</span><b>82%</b></div><div className="demo-habit-bars">{[82,100,65,92,75,48,0].map((value,index)=><div key={index}><i style={{height:value+"%"}} /><small>{"MTWTFSS"[index]}</small></div>)}</div><div className="demo-habit-foot"><span><i /> Reading · 12 day streak</span><strong>Keep it going</strong></div></div>}
-            {demoView === "focus" && <div className="demo-focus-view"><span className="demo-focus-label">A LITTLE SPACE TO THINK</span><div className="demo-focus-clock">25:00</div><p>One task. One clear mind.</p><div className="demo-focus-dots"><i /><i /><i /><i /></div><span className="demo-focus-chip">FOCUS SESSION · 01</span></div>}
-            {demoView === "finance" && <div className="demo-finance-view"><div className="demo-stage-top"><span>MONTHLY OVERVIEW</span><b>On budget</b></div><strong className="demo-balance">₹24,800</strong><small>Available this month</small><div className="demo-finance-track"><i /><i /><i /></div><div className="demo-finance-legend"><span><i /> Essentials <b>52%</b></span><span><i /> Lifestyle <b>30%</b></span><span><i /> Savings <b>18%</b></span></div></div>}
+            {demoView === "tasks" && <div className="demo-task-view">
+              <div className="demo-stage-top"><span>LIVE TODO</span><b>{demoTodos.length} items</b></div>
+              <div className="demo-live-list">{demoTodos.map((todo, index) => <div className="demo-live-row" key={todo}><button type="button" aria-label={`Complete ${todo}`} onClick={() => setDemoTodos((items) => items.filter((_, itemIndex) => itemIndex !== index))}>✓</button><span>{todo}</span><button type="button" aria-label={`Delete ${todo}`} onClick={() => setDemoTodos((items) => items.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}</div>
+              <form className="demo-live-add" onSubmit={(event) => { event.preventDefault(); if (demoTodoInput.trim()) setDemoTodos((items) => [...items, demoTodoInput.trim()]); setDemoTodoInput(""); }}><input aria-label="New demo task" value={demoTodoInput} onChange={(event) => setDemoTodoInput(event.target.value)} placeholder="Add a task" /><button type="submit">Add</button></form>
+            </div>}
+            {demoView === "habits" && <div className="demo-habit-view">
+              <div className="demo-stage-top"><span>LIVE HABIT</span><b>{demoHabitDone ? "1 day streak" : "Ready"}</b></div>
+              <button type="button" className={`demo-habit-toggle ${demoHabitDone ? "done" : ""}`} onClick={() => setDemoHabitDone((done) => !done)}><span>{demoHabitDone ? "✓" : "○"}</span><b>Drink water</b><small>{demoHabitDone ? "Progress updated" : "Tap to check in"}</small></button>
+              <div className="demo-habit-progress"><i style={{ width: demoHabitDone ? "100%" : "0%" }} /></div>
+            </div>}
+            {demoView === "focus" && <div className="demo-focus-view">
+              <span className="demo-focus-label">LIVE FOCUS TIMER</span><div className="demo-focus-clock">{String(Math.floor(demoSeconds / 60)).padStart(2, "0")}:{String(demoSeconds % 60).padStart(2, "0")}</div>
+              <div className="demo-live-actions"><button type="button" onClick={() => setDemoTimerRunning((running) => !running)}>{demoTimerRunning ? "Pause" : "Start"}</button><button type="button" onClick={() => { setDemoTimerRunning(false); setDemoSeconds(25 * 60); }}>Reset</button></div>
+            </div>}
+            {demoView === "finance" && <div className="demo-finance-view">
+              <div className="demo-stage-top"><span>LIVE FINANCE</span><b>{demoTransactions.reduce((total, value) => total + value, 0) >= 0 ? "Positive" : "Negative"}</b></div>
+              <strong className="demo-balance">₹{demoTransactions.reduce((total, value) => total + value, 0).toLocaleString()}</strong>
+              <form className="demo-live-add" onSubmit={(event) => { event.preventDefault(); const amount = Number(demoFinanceInput); if (amount) setDemoTransactions((items) => [...items, amount]); setDemoFinanceInput(""); }}><input aria-label="Income or expense amount" type="number" value={demoFinanceInput} onChange={(event) => setDemoFinanceInput(event.target.value)} placeholder="Use negative for expense" /><button type="submit">Add</button></form>
+            </div>}
           </div>
           <div className="auth-demo-foot"><span className="auth-note-mark"><Logo light={false} /></span><div><b>One workspace. Your whole day.</b><small>Explore the real tools once you’re inside.</small></div><span className="demo-pagination">{["tasks","habits","focus","finance"].indexOf(demoView)+1} / 4</span></div>
         </div>
@@ -292,6 +348,28 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
         <button className="btn pri" disabled={busy}>{busy ? "Saving…" : "Continue to DayLoop"}</button>
         <button type="button" className="btn ghost" onClick={() => void leaveWorkspace()}>Sign out</button></form>);
     }
+    if (tourOpen) {
+      const tourSteps = [
+        ["Dashboard", "See your day and priorities at a glance."],
+        ["Tasks", "Capture work, priorities and due times."],
+        ["Habits", "Build consistency with measurable check-ins."],
+        ["Finance", "Track income, expenses and budgets."],
+        ["Notes", "Write structured pages and lists."],
+        ["Projects", "Organize tasks under focused outcomes."],
+        ["Calendar", "Plan events and deadlines."],
+        ["Analytics", "Understand trends across your whole workspace."],
+        ["Notifications", "Review current and upcoming items."],
+        ["Streaks", "Open the sidebar flame for history and longest runs."],
+        ["Sidebar", "Collapse or jump between every feature."],
+      ];
+      const finishTour = async () => {
+        setTourOpen(false);
+        setTourStep(0);
+        await apiRequest("/profile", { method: "PUT", body: JSON.stringify({ display_name: draft.display_name, username: draft.username, age: Number(draft.age), role: draft.role, onboarding_completed: true, tour_completed: true }) }).catch(() => undefined);
+      };
+      const [tourTitle, tourBody] = tourSteps[tourStep];
+      return <><>{children(() => void leaveWorkspace())}</><div className="tour-backdrop" role="presentation"><section className="tour-modal" role="dialog" aria-modal="true" aria-label="DayLoop product tour"><div className="mono">DAYLOOP TOUR · {tourStep + 1} OF {tourSteps.length}</div><h2>{tourTitle}</h2><p>{tourBody}</p><div className="tour-actions"><button className="btn ghost" onClick={() => void finishTour()}>Skip tour</button><div className="sp" /><button className="btn" onClick={() => void finishTour()} disabled={tourStep < tourSteps.length - 1} style={{ visibility: tourStep < tourSteps.length - 1 ? "hidden" : "visible" }}>{tourStep === tourSteps.length - 1 ? "Finish" : "Next"}</button>{tourStep < tourSteps.length - 1 && <button className="btn pri" onClick={() => setTourStep((step) => Math.min(tourSteps.length - 1, step + 1))}>Next</button>}</div></section></div></>;
+    }
     return <>{children(() => void leaveWorkspace())}</>;
   }
 
@@ -307,6 +385,10 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
       <div className="field auth-password-field"><label htmlFor="a-pw">Password</label><div className="pw"><input id="a-pw" type={showPw ? "text" : "password"} autoComplete={register ? "new-password" : "current-password"} minLength={register ? 8 : 6} required value={password} onChange={(e) => setPassword(e.target.value)} /><button type="button" aria-label={showPw ? "Hide password" : "Show password"} onClick={() => setShowPw((s) => !s)}>{showPw ? <EyeOff className="ic" /> : <Eye className="ic" />}</button></div>
         {register && <div className="auth-strength"><div className={`meter s${strength}`} aria-hidden="true"><i /><i /><i /><i /></div><small>{strength < 2 ? "Use 8+ characters and mix letter types" : strength < 4 ? "Good start — add a number or symbol" : "Strong password"}</small></div>}</div>
       {register && <div className="field auth-password-field"><label htmlFor="a-confirm-pw">Confirm password</label><div className={`pw ${confirmPassword ? passwordMatches ? "is-match" : "is-mismatch" : ""}`}><input id="a-confirm-pw" type={showConfirmPw ? "text" : "password"} autoComplete="new-password" minLength={8} required value={confirmPassword} aria-invalid={confirmPassword.length > 0 && !passwordMatches} aria-describedby="password-match-hint" onChange={(e) => setConfirmPassword(e.target.value)} /><button type="button" aria-label={showConfirmPw ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmPw((s) => !s)}>{showConfirmPw ? <EyeOff className="ic" /> : <Eye className="ic" />}</button></div><small id="password-match-hint" className={confirmPassword ? passwordMatches ? "auth-match-good" : "auth-match-bad" : "auth-match-neutral"}>{confirmPassword ? passwordMatches ? "Passwords match" : "Passwords do not match yet" : "Enter the same password again to confirm."}</small></div>}
+    </>}
+    {register && <>
+      <div className="field"><label htmlFor="a-username">Username</label><input id="a-username" autoComplete="username" minLength={3} maxLength={24} pattern="[A-Za-z0-9_]{3,24}" required value={draft.username} onChange={(event) => setDraft({ ...draft, username: event.target.value.toLowerCase() })} /></div>
+      <div className="fr"><div className="field"><label htmlFor="a-age">Age</label><input id="a-age" type="number" min={13} max={120} required value={draft.age} onChange={(event) => setDraft({ ...draft, age: event.target.value })} /></div><div className="field"><label htmlFor="a-role">Role</label><select id="a-role" required value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })}><option value="" disabled>Select role</option>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></div>
     </>}
     {error && <p className="err" role="alert">{error}</p>}{info && <p className="mute" role="status">{info}</p>}
     <button className="btn pri auth-submit" disabled={!firebaseAuth || busy || (register && (!passwordMatches || password.length < 8))}>{busy ? "Please wait…" : mode === "signup" ? "Create your account" : mode === "forgot" ? "Send reset link" : "Sign in to DayLoop"}</button>

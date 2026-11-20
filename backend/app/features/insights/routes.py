@@ -8,7 +8,7 @@ router = APIRouter(prefix="/insights", tags=["insights"])
 
 @router.get("/overview")
 def get_overview(
-    days: int = Query(default=30, ge=7, le=180), user: dict = Depends(get_current_user)
+    days: int = Query(default=30, ge=1, le=365), user: dict = Depends(get_current_user)
 ) -> dict:
     """Daily activity series and headline counters that power the dashboard and analytics."""
     owner = user["id"]
@@ -30,6 +30,12 @@ def get_overview(
         " AND f.voided_at IS NULL AND f.transaction_type='income' AND f.transaction_date = d.day),0) AS income, "
         "COALESCE((SELECT SUM(amount) FROM finance_transactions f WHERE f.user_id=%(u)s "
         " AND f.voided_at IS NULL AND f.transaction_type='expense' AND f.transaction_date = d.day),0) AS expenses "
+        ",(SELECT COUNT(*) FROM projects p WHERE p.user_id=%(u)s AND p.archived_at IS NULL "
+        " AND (p.created_at AT TIME ZONE %(tz)s)::date = d.day) AS projects_created "
+        ",(SELECT COUNT(*) FROM calendar_events c WHERE c.user_id=%(u)s "
+        " AND (c.start_at AT TIME ZONE %(tz)s)::date = d.day) AS events_count "
+        ",(SELECT COUNT(*) FROM note_pages n WHERE n.user_id=%(u)s AND n.deleted_at IS NULL "
+        " AND (n.created_at AT TIME ZONE %(tz)s)::date = d.day) AS notes_created "
         "FROM d ORDER BY d.day",
         {"tz": timezone, "days": days, "u": owner},
     )

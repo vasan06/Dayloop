@@ -59,6 +59,7 @@ export default function Profile() {
           <div className="security-intro"><span className="security-icon"><ShieldCheck className="ic" /></span><div><b>Keep your account secure</b><p className="mute sm">Request a secure password reset link sent to your account email.</p></div></div>
           <div className="security-email">{profile.data?.email || "No email address available"}</div>
           <button className="btn" onClick={() => void resetPassword()} disabled={resetBusy || !profile.data?.email || !firebaseAuth}><KeyRound className="ic" />{resetBusy ? "Sending…" : "Send password reset link"}</button>
+          <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => save.mutate({ ...f, age: Number(f.age), tour_completed: false, onboarding_completed: true })}>Replay product tour</button>
           {!firebaseAuth && <p className="mute sm">Password reset is managed by your current authentication provider.</p>}
         </Card>
       </div>}

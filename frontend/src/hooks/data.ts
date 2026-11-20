@@ -33,6 +33,27 @@ export const useSummary = () => useQuery({ queryKey: keys.summary, queryFn: () =
 export const useEvents = () => useQuery({ queryKey: keys.events, queryFn: items<CalendarEvent>("/calendar/events") });
 export const useNotifications = (unreadOnly = false) => useQuery({ queryKey: [...keys.notifications, unreadOnly], queryFn: items<Notification>(`/notifications${unreadOnly ? "?unread_only=true" : ""}`), refetchInterval: 30000 });
 export const useMarkNotificationRead = () => useAction((id: string) => apiRequest(`/notifications/${id}/read`, { method: "PATCH" }), [keys.notifications]);
+export const useNotificationCenter = () => useQuery({
+  queryKey: ["notification-center"],
+  queryFn: () => apiRequest<{ items: Notification[]; tasks: Task[]; events: CalendarEvent[] }>("/notifications/center"),
+  refetchInterval: 30000,
+});
+export const useMarkAllNotificationsRead = () =>
+  useAction(() => apiRequest("/notifications/read-all", { method: "POST" }), [keys.notifications, ["notification-center"]]);
+export const useDismissNotification = () =>
+  useAction((id: string) => apiRequest(`/notifications/${id}/dismiss`, { method: "PATCH" }), [keys.notifications, ["notification-center"]]);
+export const useStreakOverview = () => useQuery({
+  queryKey: ["streaks"],
+  queryFn: () => apiRequest<{
+    timezone: string;
+    today: string;
+    combined: { current: number; last_update: string };
+    habits: Array<{ habit_id: string; name: string; current: number; start: string | null; last_update: string; break_date: string | null }>;
+    events: Array<{ habit_id: string | null; event_type: string; event_date: string; streak_length: number; reason: string; created_at: string }>;
+    longest: number;
+  }>("/habits/streaks/overview"),
+  refetchInterval: 60000,
+});
 export const useInsights = (days: number) =>
   useQuery({ queryKey: [...keys.insights, days], queryFn: () => apiRequest<Insights>(`/insights/overview?days=${days}`) });
 export const useSearch = (q: string) =>
@@ -69,6 +90,15 @@ export const useUpdateTask = () =>
   useAction((v: { id: string } & Partial<Task>) => { const { id, ...rest } = v; return apiRequest(`/tasks/${id}`, { method: "PATCH", ...json(rest) }); }, [keys.tasks, keys.insights]);
 export const useDeleteTask = () =>
   useAction((id: string) => apiRequest(`/tasks/${id}`, { method: "DELETE" }), [keys.tasks, keys.projects, keys.insights], "Task deleted");
+export const useTaskNotes = (id: string | null) => useQuery({
+  queryKey: ["task-notes", id],
+  enabled: Boolean(id),
+  queryFn: () => apiRequest<{ items: { type: string; content: { text?: string } }[]; updated_at: string | null }>(`/tasks/${id}/notes`),
+});
+export const useSaveTaskNotes = () => useMutation({
+  mutationFn: (v: { id: string; blocks: { type: string; content: { text: string } }[] }) =>
+    apiRequest(`/tasks/${v.id}/notes`, { method: "PUT", ...json({ blocks: v.blocks }) }),
+});
 
 export const useCreateProject = () =>
   useAction((v: Partial<Project>) => apiRequest("/projects", { method: "POST", ...json(v) }), [keys.projects], "Project created");
