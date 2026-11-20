@@ -13,7 +13,8 @@ ALLOWED_ROLES = {"school_student", "student", "working", "freelancer", "entrepre
 @router.get("")
 def get_profile(user: dict = Depends(get_current_user)) -> dict:
     return {"item": fetch_one(
-        "SELECT email,display_name,username,age,role,photo_url,timezone FROM users WHERE id=%s",
+        "SELECT email,display_name,username,age,role,photo_url,timezone,"
+        " onboarding_completed,tour_completed FROM users WHERE id=%s",
         (user["id"],),
     )}
 
@@ -35,11 +36,26 @@ def update_profile(payload: dict, user: dict = Depends(get_current_user)) -> dic
         raise HTTPException(status_code=422, detail="Choose a valid role.")
     if not name or len(name) > 80:
         raise HTTPException(status_code=422, detail="Enter your name (up to 80 characters).")
+    updates = ["display_name=%s", "username=%s", "age=%s", "role=%s"]
+    parameters: list = [name, username, age, role]
+    if "timezone" in payload:
+        timezone = str(payload["timezone"]).strip()[:64]
+        if timezone:
+            updates.append("timezone=%s")
+            parameters.append(timezone)
+    if "onboarding_completed" in payload:
+        updates.append("onboarding_completed=%s")
+        parameters.append(bool(payload["onboarding_completed"]))
+    if "tour_completed" in payload:
+        updates.append("tour_completed=%s")
+        parameters.append(bool(payload["tour_completed"]))
+    parameters.append(user["id"])
     try:
         item = fetch_one(
-            "UPDATE users SET display_name=%s,username=%s,age=%s,role=%s,updated_at=now() "
-            "WHERE id=%s RETURNING email,display_name,username,age,role,photo_url,timezone",
-            (name, username, age, role, user["id"]),
+            f"UPDATE users SET {','.join(updates)},updated_at=now() "
+            "WHERE id=%s RETURNING email,display_name,username,age,role,photo_url,timezone,"
+            "onboarding_completed,tour_completed",
+            tuple(parameters),
         )
     except UniqueViolation as error:
         raise HTTPException(status_code=409, detail="That username is already taken.") from error

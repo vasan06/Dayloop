@@ -8,6 +8,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+modifications.txt
 
 # Frontend
 node_modules/
@@ -20,3 +21,16 @@ storage/attachments/*
 *.log
 .DS_Store
 Thumbs.db
+.docs/*
+.superpowers/*
+.backend/tests/*
+
+# Documentation, plans, tests and QA output
+/docs/
+/backend/tests/
+/frontend/tests/
+/test-results/
+/playwright-report/
+/coverage/
+**/__snapshots__/
+**/*.snap

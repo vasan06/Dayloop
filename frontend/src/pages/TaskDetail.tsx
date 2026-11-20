@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -21,7 +21,7 @@ import {
   confetti,
   type FieldDef,
 } from "../components/ui";
-import { useDeleteTask, useProjects, useTasks, useUpdateTask } from "../hooks/data";
+import { useDeleteTask, useProjects, useSaveTaskNotes, useTaskNotes, useTasks, useUpdateTask } from "../hooks/data";
 import { isOverdue } from "../lib/derive";
 import { isoDate, priorityLabel, relative, shortDate, statusLabel, timeOf } from "../lib/format";
 import type { TaskPriority, TaskStatus } from "../lib/types";
@@ -38,7 +38,7 @@ const STATUS_PILL: Record<TaskStatus, { label: string; cls: string }> = {
 };
 
 const toInput = (iso: string | null) => (iso ? isoDate(new Date(iso)) : "");
-const toIso = (date: string) => (date ? new Date(`${date}T18:00:00`).toISOString() : null);
+const toIso = (date: string, time = "18:00") => (date ? new Date(`${date}T${time || "18:00"}:00`).toISOString() : null);
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
@@ -47,9 +47,19 @@ export default function TaskDetail() {
   const projects = useProjects();
   const update = useUpdateTask();
   const remove = useDeleteTask();
+  const taskNotes = useTaskNotes(id ?? null);
+  const saveTaskNotes = useSaveTaskNotes();
+  const [taskBlocks, setTaskBlocks] = useState<{ type: string; content: { text: string } }[]>([]);
 
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    if (taskNotes.data?.items) setTaskBlocks(taskNotes.data.items.map((item) => ({
+      type: item.type,
+      content: { text: item.content.text ?? "" },
+    })));
+  }, [taskNotes.data]);
 
   if (tasks.isLoading || projects.isLoading) {
     return (
@@ -98,7 +108,6 @@ export default function TaskDetail() {
 
   const fields: FieldDef[] = [
     { name: "title", label: "Title", required: true, placeholder: "Task title" },
-    { name: "description", label: "Description / Notes", type: "textarea" },
     {
       name: "project_id",
       label: "Project",
@@ -114,6 +123,7 @@ export default function TaskDetail() {
       half: true,
     },
     { name: "due", label: "Due date", type: "date", half: true },
+    { name: "due_time", label: "Due time", type: "time", half: true },
     {
       name: "status",
       label: "Status",
@@ -128,11 +138,10 @@ export default function TaskDetail() {
       {
         id: task.id,
         title: v.title.trim(),
-        description: v.description,
         project_id: v.project_id || null,
         priority: v.priority as TaskPriority,
         status: v.status as TaskStatus,
-        due_at: toIso(v.due),
+        due_at: toIso(v.due, v.due_time),
         completed_at: v.status === "completed" && !task.completed_at ? new Date().toISOString() : v.status !== "completed" ? null : task.completed_at,
       },
       {
@@ -149,17 +158,7 @@ export default function TaskDetail() {
 
   return (
     <>
-      {/* Breadcrumb & Navigation */}
       <div className="row sb wrap" style={{ marginBottom: 16 }}>
-        <div className="row mono" style={{ gap: 8, fontSize: 13 }}>
-          <Link to="/tasks" className="lnk" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <ArrowLeft className="ic" style={{ width: 14, height: 14 }} />
-            Tasks
-          </Link>
-          <span style={{ opacity: 0.5 }}>/</span>
-          <span style={{ color: "var(--ink)", fontWeight: 500 }}>Task details</span>
-        </div>
-
         <div className="row wrap" style={{ gap: 8 }}>
           <button className={`btn ${isDone ? "ghost" : "pri"}`} onClick={toggleComplete} disabled={update.isPending}>
             {isDone ? (
@@ -221,23 +220,26 @@ export default function TaskDetail() {
               {task.title}
             </h1>
 
-            <div style={{ marginBottom: 24 }}>
-              <div className="mono" style={{ marginBottom: 6 }}>Description</div>
-              <div
-                style={{
-                  background: "var(--bg)",
-                  borderRadius: 16,
-                  padding: "16px 18px",
-                  fontSize: 14,
-                  lineHeight: 1.6,
-                  color: task.description ? "var(--ink)" : "var(--mute)",
-                  whiteSpace: "pre-wrap",
-                  minHeight: 80,
-                }}
-              >
-                {task.description || "No description provided."}
+            <Card className="task-notes-card" style={{ marginBottom: 24 }}>
+              <CardHead mono="Task notes" title="Points" />
+              <div className="task-notes-editor">
+                {taskBlocks.map((block, index) => <div className="task-note-block" key={index}>
+                  <select aria-label={`Block ${index + 1} type`} value={block.type} onChange={(event) => setTaskBlocks((blocks) => blocks.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value } : item))}>
+                    <option value="paragraph">Paragraph</option><option value="heading_1">Heading 1</option><option value="heading_2">Heading 2</option><option value="heading_3">Heading 3</option><option value="bulleted_list">Bullets</option><option value="numbered_list">Numbered list</option><option value="todo">To-do</option><option value="code">Code</option><option value="quote">Quote</option>
+                  </select>
+                  <textarea aria-label={`Task note block ${index + 1}`} value={block.content.text ?? ""} placeholder="Type or use / for a block" onChange={(event) => {
+                    const text = event.target.value;
+                    const command = text.trim().match(/^\/(heading 1|heading 2|heading 3|bullets|todo|code|quote|text)$/i)?.[1].toLowerCase();
+                    const types: Record<string, string> = { "heading 1": "heading_1", "heading 2": "heading_2", "heading 3": "heading_3", bullets: "bulleted_list", todo: "todo", code: "code", quote: "quote", text: "paragraph" };
+                    setTaskBlocks((blocks) => blocks.map((item, itemIndex) => itemIndex === index ? { type: command ? types[command] : item.type, content: { text: command ? "" : text } } : item));
+                  }} />
+                  <button type="button" className="iconbtn" aria-label={`Delete task note block ${index + 1}`} onClick={() => setTaskBlocks((blocks) => blocks.filter((_, itemIndex) => itemIndex !== index))}>×</button>
+                </div>)}
+                {taskBlocks.length === 0 && <button type="button" className="btn ghost" onClick={() => setTaskBlocks([{ type: "paragraph", content: { text: "" } }])}>Add notes</button>}
+                {taskBlocks.length > 0 && <button type="button" className="btn sm ghost" onClick={() => setTaskBlocks((blocks) => [...blocks, { type: "paragraph", content: { text: "" } }])}>+ Add block</button>}
+                <button type="button" className="btn pri sm" disabled={saveTaskNotes.isPending} onClick={() => saveTaskNotes.mutate({ id: task.id, blocks: taskBlocks })}>{saveTaskNotes.isPending ? "Saving…" : "Save notes"}</button>
               </div>
-            </div>
+            </Card>
 
             {/* Key Metadata Grid */}
             <div
@@ -351,11 +353,11 @@ export default function TaskDetail() {
           onClose={() => setIsEditing(false)}
           initial={{
             title: task.title,
-            description: task.description,
             project_id: task.project_id ?? "",
             priority: task.priority,
             status: task.status,
             due: toInput(task.due_at),
+            due_time: task.due_at ? new Date(task.due_at).toTimeString().slice(0,5) : "",
           }}
           onSubmit={handleEditSubmit}
         />

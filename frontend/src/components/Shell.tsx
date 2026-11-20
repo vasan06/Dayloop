@@ -5,7 +5,7 @@ import {
   BarChart3, Bell, CalendarDays, CheckSquare, ChevronsLeft, FolderKanban, Flame, LayoutDashboard, LogOut, Moon,
   NotebookPen, Plus, Repeat, Search, Sun, Wallet, ArrowUpRight, Command, UserCircle,
 } from "lucide-react";
-import { useHabits, useMarkNotificationRead, useNotifications, useProfile, useSearch, useTasks, useEvents } from "../hooks/data";
+import { useDismissNotification, useHabits, useMarkAllNotificationsRead, useNotificationCenter, useNotifications, useProfile, useSearch, useStreakOverview, useTasks, useEvents } from "../hooks/data";
 import { initials } from "../lib/format";
 import { Toaster } from "./ui";
 
@@ -43,6 +43,7 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
   const [theme, setTheme] = useState(() => safeGet("dl-theme") ?? "light");
   const [entered, setEntered] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [streakOpen, setStreakOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -52,7 +53,10 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
   const tasks = useTasks();
   const events = useEvents();
   const notifications = useNotifications(true);
-  const markNotificationRead = useMarkNotificationRead();
+  const notificationCenter = useNotificationCenter();
+  const markAllRead = useMarkAllNotificationsRead();
+  const dismissNotification = useDismissNotification();
+  const streakOverview = useStreakOverview();
 
   useEffect(() => { applyTheme(theme); safeSet("dl-theme", theme); }, [theme]);
   useEffect(() => { safeSet("dl-rail", collapsed ? "1" : "0"); }, [collapsed]);
@@ -116,8 +120,10 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
   }, [location.pathname]);
 
 
-  const streak = Math.max(0, ...(habits.data ?? []).map((h) => h.current_streak));
+  const streak = streakOverview.data?.combined.current ?? 0;
   const overdue = (tasks.data ?? []).filter((t) => t.status !== "completed" && t.status !== "cancelled" && t.due_at && new Date(t.due_at) < new Date()).length;
+  const habitCount = (habits.data ?? []).filter((habit) => !habit.completed_today).length;
+  const unreadCount = (notificationCenter.data?.items ?? []).filter((item) => !item.read_at).length;
   const name = profile.data?.username || profile.data?.display_name || "You";
   
   // Fixed title lookup with type safety and robust route matching
@@ -148,11 +154,15 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
         {NAV.map((n) => (
           <NavLink key={n.to} to={n.to} end={"end" in n ? n.end : false} className={({ isActive }) => `nav ${isActive ? "on" : ""}`} title={n.label}>
             <n.icon className="ic" /><span className="lab">{n.label}</span>
-            {n.to === "/tasks" && overdue > 0 && <span className="bdg">{overdue}</span>}
+            {n.to === "/tasks" && overdue > 0 && <span className="bdg" aria-label={`${overdue} overdue tasks`}>{overdue > 99 ? "99+" : overdue}</span>}
+            {n.to === "/habits" && habitCount > 0 && <span className="bdg" aria-label={`${habitCount} habits remaining today`}>{habitCount > 99 ? "99+" : habitCount}</span>}
           </NavLink>
         ))}
         <div className="sp" />
-        <div className="streak hide"><span className="fl"><Flame className="ic" /></span><div><b>{streak}-day streak</b><div className="sm" style={{ opacity: 0.7 }}>{streak ? "Keep the loop going" : "Check in a habit today"}</div></div></div>
+        <button type="button" className="streak hide" onClick={() => setStreakOpen(true)} aria-label={`Open streak panel. Combined streak ${streak} days`}>
+          <span className="fl"><Flame className="ic" /></span>
+          {collapsed ? <b className="streak-collapsed-count">{streak}</b> : <div><b>{streak}-day streak</b><div className="sm" style={{ opacity: 0.7 }}>{streak ? "Keep the loop going" : "Check in a habit today"}</div></div>}
+        </button>
         <div className="me">
           <button className="av profile-avatar profile-trigger" aria-label="Open profile menu" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}>{initials(name)}</button>
           <button className="profile-identity lab" onClick={() => navigate("/profile")} style={{ minWidth: 0, flex: 1 }}><b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</b><span className="sm" style={{ opacity: 0.7 }}>{profile.data?.username ? `@${profile.data.username}` : "Your profile"}</span></button>
@@ -169,18 +179,46 @@ export default function Shell({ onSignOut }: { onSignOut: () => void }) {
 
       <main className={`main ${entered ? "enter" : ""}`} id="main">
         <div className="bar">
-          <div className="mono crumb"><span>DayLoop</span><span>/</span><b style={{ color: "var(--ink)" }}>{title}</b></div>
           <div className="sp2" />
           <button className="kbar" onClick={() => setPaletteOpen(true)} aria-label="Open command palette"><Search className="ic" /><span>Search or jump to…</span><span className="kbd" style={{ flex: "none" }}>⌘K</span></button>
           <button className="iconbtn mobile-profile-trigger profile-trigger" aria-label="Open profile menu" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}><UserCircle className="ic" /></button>
           <button className="iconbtn" aria-label={`Switch to ${nextTheme} theme`} onClick={() => setTheme(nextTheme)}>{theme === "dark" ? <Sun className="ic" /> : <Moon className="ic" />}</button>
-          <div style={{ position: "relative" }}><button className="iconbtn" aria-label="Notifications" onClick={async () => { setNotificationsOpen((open) => !open); if (typeof Notification !== "undefined" && Notification.permission === "default") await Notification.requestPermission(); }}><Bell className="ic" />{(notifications.data?.length ?? 0) > 0 && <i className="dot" />}</button>{notificationsOpen && <div className="menu" style={{ right: 0, minWidth: 280 }}><b style={{ display: "block", padding: "8px 12px" }}>Notifications</b>{(notifications.data ?? []).slice(0, 4).map((item) => <button key={item.id} onClick={() => markNotificationRead.mutate(item.id)}><span className="t"><b>{item.title}</b><small className="mute">{item.body}</small></span></button>)}</div>}</div>
+          <div style={{ position: "relative" }}>
+            <button className="iconbtn" aria-label={`Notifications, ${unreadCount} unread`} onClick={async () => { setNotificationsOpen((open) => !open); if (typeof Notification !== "undefined" && Notification.permission === "default") await Notification.requestPermission(); }}>
+              <Bell className="ic" />
+              {unreadCount > 0 && <span className="dot badge-count" aria-label={`${unreadCount} unread notifications`}>{unreadCount > 99 ? "99+" : unreadCount}</span>}
+            </button>
+            {notificationsOpen && <div className="notification-center" role="dialog" aria-label="Notification center">
+              <div className="notification-center-head"><b>Notifications</b><button className="lnk acc sm" onClick={() => markAllRead.mutate(undefined as never)}>Mark all read</button></div>
+              <div className="notification-section"><b>Now</b>
+                {(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && new Date(task.due_at) <= new Date()).slice(0, 8).map((task) => <button key={`task-${task.id}`} className="notification-row" onClick={() => navigate(`/tasks/${task.id}`)}><span className="notification-kind">Task</span><span><b>{task.title}</b><small>{task.due_at ? new Date(task.due_at).toLocaleString() : ""}</small></span></button>)}
+              </div>
+              <div className="notification-section"><b>Today</b>
+                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at).toDateString() === new Date().toDateString()).map((event) => <button key={`event-${event.id}`} className="notification-row" onClick={() => navigate("/calendar")}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleTimeString()}</small></span></button>)}
+                {(notificationCenter.data?.items ?? []).filter((item) => !item.read_at).slice(0, 6).map((item) => <button key={item.id} className="notification-row" onClick={() => navigate(item.click_path ?? "/")}><span className="notification-kind">Update</span><span><b>{item.title}</b><small>{item.body}</small></span><span className="notification-dismiss" role="button" aria-label={`Dismiss ${item.title}`} onClick={(event) => { event.stopPropagation(); dismissNotification.mutate(item.id); }}>×</span></button>)}
+              </div>
+              <div className="notification-section"><b>Upcoming</b>
+                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at) > new Date()).slice(0, 8).map((event) => <button key={`upcoming-${event.id}`} className="notification-row" onClick={() => navigate("/calendar")}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleString()}</small></span></button>)}
+              </div>
+            </div>}
+          </div>
           {!["/calendar", "/habits"].includes(location.pathname) && <button className="btn pri" onClick={() => navigate(`${location.pathname === "/" ? "/tasks" : location.pathname}?new=1`)}><Plus className="ic" />New</button>}
         </div>
         <Suspense fallback={<div className="route-loading" role="status"><span className="orbit" aria-hidden="true"><i /><i /><i /></span><span>Loading page…</span></div>}>
           <Outlet />
         </Suspense>
       </main>
+      {streakOpen && <div className="streak-panel-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setStreakOpen(false)}>
+        <aside className="streak-panel" role="dialog" aria-modal="true" aria-label="Streak history">
+          <div className="streak-panel-head"><div><span className="mono">STREAKS</span><h2>{streak}-day combined streak</h2></div><button className="iconbtn" aria-label="Close streak panel" onClick={() => setStreakOpen(false)}>×</button></div>
+          <div className="streak-summary"><div><small>Longest streak</small><b>{streakOverview.data?.longest ?? streak} days</b></div><div><small>Combined update</small><b>{streakOverview.data?.combined.last_update ?? "Today"}</b></div></div>
+          <div className="streak-habit-list">
+            {(streakOverview.data?.habits ?? []).map((habit) => <div className="streak-habit-row" key={habit.habit_id}><span className="fl"><Flame className="ic" /></span><div><b>{habit.name}</b><small>{habit.current} consecutive days · updated {habit.last_update}</small>{habit.break_date && <small>Last break: {habit.break_date}</small>}</div><strong>{habit.current}</strong></div>)}
+            {!streakOverview.data?.habits.length && <div className="streak-empty">Create a habit to start your first streak.</div>}
+          </div>
+          <div className="streak-timeline"><b>Streak timeline</b>{(streakOverview.data?.events ?? []).map((event) => <div className="streak-event" key={`${event.habit_id}-${event.event_date}`}><i /><div><b>{event.event_type}</b><small>{event.event_date} · {event.reason || "Updated"}</small></div></div>)}{!streakOverview.data?.events.length && <small>No streak breaks or resumes recorded yet.</small>}</div>
+        </aside>
+      </div>}
       {paletteOpen && <Palette onClose={() => setPaletteOpen(false)} />}
       <Toaster />
     </div>

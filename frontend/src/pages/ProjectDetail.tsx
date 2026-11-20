@@ -186,17 +186,6 @@ export default function ProjectDetail() {
 
   return (
     <>
-      {/* Breadcrumb Navigation */}
-      <div className="row sb wrap" style={{ marginBottom: 14 }}>
-        <div className="row mono" style={{ gap: 8, fontSize: 13 }}>
-          <Link to="/projects" className="lnk" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <ArrowLeft className="ic" style={{ width: 14, height: 14 }} />
-            Projects
-          </Link>
-          <span style={{ opacity: 0.5 }}>/</span>
-          <span style={{ color: "var(--ink)", fontWeight: 500 }}>{project.name}</span>
-        </div>
-      </div>
 
       {/* Gradient Hero Banner */}
       <div

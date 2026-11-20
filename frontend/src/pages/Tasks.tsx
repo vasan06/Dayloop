@@ -11,7 +11,7 @@ import type { Task, TaskPriority, TaskStatus } from "../lib/types";
 type Tab = "open" | "today" | "overdue" | "done" | "all";
 const PRI_CLASS: Record<TaskPriority, string> = { urgent: "hi", high: "hi", normal: "md", low: "lo" };
 const toInput = (iso: string | null) => (iso ? isoDate(new Date(iso)) : "");
-const toIso = (date: string) => (date ? new Date(`${date}T18:00:00`).toISOString() : null);
+const toIso = (date: string, time = "18:00") => (date ? new Date(`${date}T${time || "18:00"}:00`).toISOString() : null);
 
 export default function Tasks() {
   const tasks = useTasks();
@@ -40,13 +40,13 @@ export default function Tasks() {
   const projectName = (id: string | null) => projects.data?.find((p) => p.id === id)?.name;
   const fields = (): FieldDef[] => [
     { name: "title", label: "Title", required: true, placeholder: "What needs doing?" },
-    { name: "description", label: "Notes", type: "textarea" },
     { name: "project_id", label: "Project", type: "select", options: [["", "No project"], ...(projects.data ?? []).map((p) => [p.id, p.name] as [string, string])], half: true },
     { name: "priority", label: "Priority", type: "select", options: Object.entries(priorityLabel), half: true },
     { name: "due", label: "Due date", type: "date", half: true },
+    { name: "due_time", label: "Due time", type: "time", half: true },
     { name: "status", label: "Status", type: "select", options: Object.entries(statusLabel), half: true },
   ];
-  const payload = (v: Record<string, string>) => ({ title: v.title.trim(), description: v.description, project_id: v.project_id || null, priority: v.priority as TaskPriority, status: v.status as TaskStatus, due_at: toIso(v.due) });
+  const payload = (v: Record<string, string>) => ({ title: v.title.trim(), project_id: v.project_id || null, priority: v.priority as TaskPriority, status: v.status as TaskStatus, due_at: toIso(v.due, v.due_time) });
 
   return (
     <>
@@ -77,7 +77,7 @@ export default function Tasks() {
       {isNew && <FormModal title="New task" fields={fields()} initial={{ priority: "normal", status: "not_started", project_id: project }} busy={create.isPending} onClose={closeNew} onSubmit={(v) => create.mutate(payload(v), { onSuccess: closeNew })} />}
       {editing && (
         <FormModal title="Edit task" submit="Save changes" fields={fields()} busy={update.isPending} onClose={() => setEditing(null)}
-          initial={{ title: editing.title, description: editing.description, project_id: editing.project_id ?? "", priority: editing.priority, status: editing.status, due: toInput(editing.due_at) }}
+          initial={{ title: editing.title, project_id: editing.project_id ?? "", priority: editing.priority, status: editing.status, due: toInput(editing.due_at), due_time: editing.due_at ? new Date(editing.due_at).toTimeString().slice(0,5) : "" }}
           onSubmit={(v) => update.mutate({ id: editing.id, ...payload(v) }, { onSuccess: () => setEditing(null) })} />
       )}
       {deleting && <ConfirmModal title="Delete task?" body={`“${deleting.title}” and its subtasks will be removed.`} onConfirm={() => remove.mutate(deleting.id)} onClose={() => setDeleting(null)} />}

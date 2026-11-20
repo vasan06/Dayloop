@@ -80,7 +80,6 @@ def save_blocks(page_id: str, payload: dict, user: dict = Depends(get_current_us
         "heading_4",
         "heading_5",
         "heading_6",
-        "paragraph",
         "checkbox",
         "progress",
         "toggle",

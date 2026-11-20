@@ -47,6 +47,8 @@ function Editor({ id }: { id: string }) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropId, setDropId] = useState<string | null>(null);
   const refs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const focusId = useRef<string | null>(null);
 
@@ -131,6 +133,19 @@ function Editor({ id }: { id: string }) {
   };
 
   const onBlockKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>, block: Draft) => {
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      const index = blocks.findIndex((item) => item.id === block.id);
+      const target = event.key === "ArrowUp" ? index - 1 : index + 1;
+      if (target < 0 || target >= blocks.length) return;
+      const reordered = [...blocks];
+      const [moved] = reordered.splice(index, 1);
+      reordered.splice(target, 0, moved);
+      setBlocks(reordered);
+      setDirty(true);
+      requestAnimationFrame(() => refs.current[block.id]?.focus());
+      return;
+    }
     if (activeMenu === block.id) {
       if (event.key === "ArrowDown") { event.preventDefault(); setHighlighted((index) => Math.min(filtered.length - 1, index + 1)); return; }
       if (event.key === "ArrowUp") { event.preventDefault(); setHighlighted((index) => Math.max(0, index - 1)); return; }
@@ -167,8 +182,37 @@ function Editor({ id }: { id: string }) {
           const listStart = blocks.slice(0, index).reverse().findIndex((item) => item.type !== "numbered_list");
           const listNumber = listStart === -1 ? index + 1 : listStart + 1;
           return (
-            <div className={`editor-block block-${block.type}`} key={block.id}>
-              <span className="block-grip" aria-hidden="true"><GripVertical /></span>
+            <div
+              className={`editor-block block-${block.type}${dropId === block.id ? " drop-target" : ""}`}
+              key={block.id}
+              draggable
+              onDragStart={(event) => { setDragId(block.id); event.dataTransfer.effectAllowed = "move"; }}
+              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropId(block.id); }}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (!dragId || dragId === block.id) return;
+                const reordered = [...blocks];
+                const from = reordered.findIndex((item) => item.id === dragId);
+                const [moved] = reordered.splice(from, 1);
+                const to = reordered.findIndex((item) => item.id === block.id);
+                reordered.splice(to, 0, moved);
+                setBlocks(reordered);
+                setDirty(true);
+                setDragId(null);
+                setDropId(null);
+              }}
+            >
+              <span className="block-grip" role="button" tabIndex={0} aria-label={`Move block ${index + 1}. Use Alt plus arrow keys.`} onKeyDown={(event) => {
+                if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                event.preventDefault();
+                const target = event.key === "ArrowUp" ? index - 1 : index + 1;
+                if (target < 0 || target >= blocks.length) return;
+                const reordered = [...blocks];
+                const [moved] = reordered.splice(index, 1);
+                reordered.splice(target, 0, moved);
+                setBlocks(reordered);
+                setDirty(true);
+              }}><GripVertical /></span>
               {block.type === "todo" && <input className="block-checkbox" type="checkbox" checked={Boolean(block.checked)} onChange={(event) => updateBlock(block.id, { checked: event.target.checked })} aria-label="Mark to-do complete" />}
               {block.type === "divider" ? <hr /> : (
                 <>

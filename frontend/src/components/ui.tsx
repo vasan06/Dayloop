@@ -94,7 +94,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
 }
 
 export type FieldDef = {
-  name: string; label: string; type?: "text" | "number" | "date" | "datetime-local" | "textarea" | "select";
+  name: string; label: string; type?: "text" | "number" | "date" | "time" | "datetime-local" | "textarea" | "select";
   required?: boolean; options?: [string, string][]; placeholder?: string; half?: boolean; step?: string; min?: number;
 };
 
