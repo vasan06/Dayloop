@@ -10,5 +10,7 @@ android/captures/
 .env.*
 !*.example
 google-services.json
+# The Android Firebase client config is needed by CI; it contains no service-account key.
+!android/app/google-services.json
 *.jks
 *.keystore
