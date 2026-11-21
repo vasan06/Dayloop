@@ -61,13 +61,16 @@ jobs:
           FIREBASE_ANDROID_JSON_BASE64: ${{ secrets.FIREBASE_ANDROID_JSON_BASE64 }}
           DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ -z "$FIREBASE_ANDROID_JSON_BASE64" ]; then
-            echo "::error::Missing FIREBASE_ANDROID_JSON_BASE64 secret. Download google-services.json from your Firebase Android app (com.dayloop.app), then store its base64 contents as this secret."
+          # Prefer the secured workflow secret when supplied; otherwise use the
+          # Firebase client configuration checked into the Android app folder.
+          # google-services.json contains public client configuration, not a service account.
+          if [ -n "$FIREBASE_ANDROID_JSON_BASE64" ]; then
+            printf '%s' "$FIREBASE_ANDROID_JSON_BASE64" | base64 -d > mobile/android/app/google-services.json
+          elif [ ! -f mobile/android/app/google-services.json ]; then
+            echo "::error::Missing mobile/android/app/google-services.json and FIREBASE_ANDROID_JSON_BASE64 secret."
             exit 1
           fi
-          mkdir -p mobile/android/app
-          printf '%s' "$FIREBASE_ANDROID_JSON_BASE64" | base64 -d > mobile/android/app/google-services.json
-          python3 -c 'import json; p=json.load(open("mobile/android/app/google-services.json")); assert any(c.get("client_info",{}).get("android_client_info",{}).get("package_name")=="com.dayloop.app" for c in p.get("client",[])), "Firebase Android package must be com.dayloop.app"'
+          python3 -c 'import json; p=json.load(open("mobile/android/app/google-services.json")); assert p.get("project_info",{}).get("project_id")=="dayloop-a5c00", "Unexpected Firebase project"; assert any(c.get("client_info",{}).get("android_client_info",{}).get("package_name")=="com.dayloop.app" for c in p.get("client",[])), "Firebase Android package must be com.dayloop.app"'
           if [ -z "$DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64" ]; then
             echo "::error::Missing DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64 secret. Configure a stable Android debug signing keystore and register its SHA-1 with Firebase."
             exit 1

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "386109161178",
+    "project_id": "dayloop-a5c00",
+    "storage_bucket": "dayloop-a5c00.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:386109161178:android:e92a195958fe5310c42fe3",
+        "android_client_info": {
+          "package_name": "com.dayloop.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "386109161178-3gs2g5t1s9e6lf1f16qsi6di77hvnelr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtD5nCPcwzbh6KWv78M8BIzAP_luxBzm8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "386109161178-3gs2g5t1s9e6lf1f16qsi6di77hvnelr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
