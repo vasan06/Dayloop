@@ -42,6 +42,12 @@ jobs:
           packages: 'platform-tools'
       - name: Install web dependencies
         run: npm ci
+      - name: Validate Android API address
+        run: |
+          if [[ ! "$VITE_API_URL" =~ ^https?://[^/]+/api/v1/?$ ]]; then
+            echo "::error::Set GitHub Actions variable DAYLOOP_API_URL to the LAN/hosted FastAPI address, e.g. http://YOUR-PC-IP:8000/api/v1"
+            exit 1
+          fi
       - name: Build existing React frontend
         run: npm run build
       - name: Install Capacitor dependencies

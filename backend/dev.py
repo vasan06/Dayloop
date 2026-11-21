@@ -15,7 +15,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
-API_HOST = os.getenv("DAYLOOP_HOST", "127.0.0.1")
+# Bind on the LAN for the Capacitor Android app; access still depends on firewall/network rules.
+API_HOST = os.getenv("DAYLOOP_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("DAYLOOP_PORT", "8000"))
 WEB_HOST = os.getenv("DAYLOOP_WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("DAYLOOP_WEB_PORT", "5173"))
@@ -90,7 +91,7 @@ def _clear_dayloop_port(port: int, service: str) -> None:
         is_dayloop = False
 
         if service == "api":
-            document = _get_json(f"http://{API_HOST}:{port}/openapi.json")
+            document = _get_json(f"http://127.0.0.1:{port}/openapi.json")
             is_dayloop = (
                 name in {"python.exe", "pythonw.exe"}
                 and "app.py" in command
