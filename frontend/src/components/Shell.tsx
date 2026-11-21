@@ -115,9 +115,11 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
         try {
           if ("serviceWorker" in navigator) {
-            const registration = await navigator.serviceWorker.ready;
-            await registration.showNotification(title, { body, tag: "dayloop-focus", requireInteraction: true });
-            return;
+            const registration = await navigator.serviceWorker.getRegistration("/");
+            if (registration) {
+              await registration.showNotification(title, { body, tag: "dayloop-focus", requireInteraction: true });
+              return;
+            }
           }
           new Notification(title, { body, tag: "dayloop-focus" });
           return;
@@ -292,7 +294,6 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
         <div className="bar">
           <div className="sp2" />
           <button className="kbar" onClick={() => setPaletteOpen(true)} aria-label="Open command palette"><Search className="ic" /><span>Search or jump to…</span><span className="kbd" style={{ flex: "none" }}>⌘K</span></button>
-          <button className="btn sm focus-launch" data-tour="focus" onClick={() => navigate("/focus")}><TimerReset className="ic" />Focus</button>
           <button className="iconbtn" data-tour="feedback" aria-label="Send feedback" onClick={() => setFeedbackOpen(true)}><MessageSquare className="ic" /></button>
           <button className="iconbtn mobile-profile-trigger profile-trigger" aria-label="Open profile menu" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}><UserCircle className="ic" /></button>
           <button className="iconbtn" aria-label={`Switch to ${nextTheme} theme`} onClick={() => setTheme(nextTheme)}>{dark ? <Sun className="ic" /> : <Moon className="ic" />}</button>

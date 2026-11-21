@@ -339,8 +339,8 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
       <aside className="r auth-demo" aria-label="Interactive DayLoop product demonstration">
         <div className="auth-aside-top"><Logo /><span className="mono">YOUR WORKSPACE</span></div>
         <div className="auth-aside-content">
-          <div className="auth-preview-heading">
-            <div><span className="mono">LIVE PREVIEW</span><h2>Make room for what matters.</h2><p>One connected workspace for the moving parts of your day.</p></div>
+          <div className={`auth-preview-heading auth-preview-${mode}`}>
+            <div><span className="mono">{mode === "signup" ? "BUILD YOUR LOOP" : mode === "signin" ? "WELCOME BACK" : "YOUR WORKSPACE"}</span><h2>{mode === "signup" ? "Start simple. Grow with your day." : mode === "signin" ? "Everything you left is still in motion." : "Make room for what matters."}</h2><p>{mode === "signup" ? "Create the account on the left, then shape tasks, habits, focus and money from one connected workspace." : mode === "signin" ? "Preview the tools waiting inside while you sign back in." : "One connected workspace for the moving parts of your day."}</p></div>
           </div>
           <div className="auth-demo-tabs" role="tablist" aria-label="Explore DayLoop features">
             {([["tasks","Tasks"],["habits","Habits"],["focus","Focus"],["finance","Finance"]] as const).map(([key,label]) => <button type="button" role="tab" aria-selected={demoView===key} className={demoView===key?"active":""} key={key} onClick={()=>setDemoView(key)}>{label}</button>)}

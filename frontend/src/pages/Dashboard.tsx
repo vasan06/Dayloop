@@ -161,8 +161,6 @@ export default function Dashboard() {
         <CardHead mono="Productivity" title="Tasks & habits completed" right={<Seg value={range} options={[["7", "7 days"], ["30", "30 days"]]} onChange={setRange} />} />
         {insights.isLoading ? <Skeleton rows={5} /> : <LineChart labels={labels} series={[{ name: "Tasks done", values: windowed.map((d) => d.tasks_completed), color: "var(--acc)" }, { name: "Habits done", values: windowed.map((d) => d.habits_done), color: "var(--amber)" }]} />}
       </Card>
-      <Card className="s4" i={7}><CardHead mono="Today" title="Completion" /><Gauge value={gauge} label={`${doneToday} of ${dueTodayTotal} done`} /></Card>
-
       <Card className="s4" i={8}><CardHead mono="This week" title="Tasks completed" />{week.length && week.some((d) => d.tasks_completed > 0) ? <Bars labels={week.map((d) => new Date(d.day + "T00:00").toLocaleDateString("en", { weekday: "narrow" }))} values={week.map((d) => d.tasks_completed)} /> : <Empty title="No completed tasks this week" hint="Complete a task to see your weekly progress." action={<button className="btn sm" onClick={() => navigate("/tasks")}>Open tasks</button>} />}</Card>
       <Card className="s4" i={9}><CardHead mono="Consistency" title="Habit activity" />{h.length ? <Heatmap cells={heat.cells} startWeekday={heat.first} tips={heat.tips} /> : <Empty title="No habits yet" hint="Build a streak." action={<button className="btn sm" onClick={() => navigate("/habits?new=1")}>Add habit</button>} />}</Card>
       <Card className="s4" i={10}>
