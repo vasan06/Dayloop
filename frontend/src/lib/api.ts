@@ -43,7 +43,7 @@ async function directApiRequest<T>(path: string, options: RequestInit = {}): Pro
   } catch (reason) {
     const message = reason instanceof Error ? reason.message : "Network request failed.";
     throw new ApiRequestError(
-      `Network error: ${message}. Check that the DayLoop API is running.`,
+      `Network error contacting ${API_BASE}${path}: ${message}. The API may be unreachable from the Android WebView (HTTP/mixed-content or network access).`,
       0,
     );
   }
