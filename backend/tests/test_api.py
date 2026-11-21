@@ -244,3 +244,28 @@ def test_reminder_requires_valid_source_identifier(client):
         "title": "Lunch", "source_type": "task", "source_id": "invalid", "scheduled_at": "2026-11-30T10:00:00Z",
     })
     assert response.status_code == 422
+
+
+def test_sync_change_feed_scoped_and_paginated(client):
+    initial = client.get("/api/v1/sync/cursor")
+    assert initial.status_code == 200
+    cursor = initial.json()["cursor"]
+    created = item(client.post("/api/v1/tasks", json={"title": "Offline sync task"}))
+    task_id = created["id"]
+
+    first = client.get(f"/api/v1/sync/changes?after={cursor}&limit=1")
+    assert first.status_code == 200
+    first_body = first.json()
+    assert len(first_body["items"]) == 1
+    assert first_body["items"][0]["entity"] == "tasks"
+    assert first_body["items"][0]["record_key"] == task_id
+
+    assert client.patch(f"/api/v1/tasks/{task_id}", json={"status": "completed"}).status_code == 200
+    second = client.get(f"/api/v1/sync/changes?after={first_body['next_cursor']}")
+    assert second.status_code == 200
+    assert any(row["entity"] == "tasks" and row["record_key"] == task_id for row in second.json()["items"])
+
+    client.headers["X-DayLoop-Dev-User"] = "second-account"
+    other = client.get("/api/v1/sync/changes?after=0")
+    assert other.status_code == 200
+    assert not any(row["record_key"] == task_id for row in other.json()["items"])

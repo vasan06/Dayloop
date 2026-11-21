@@ -23,6 +23,7 @@ from app.features.profile.routes import router as profile_router
 from app.features.projects.routes import router as projects_router
 from app.features.search.routes import router as search_router
 from app.features.tasks.routes import router as tasks_router
+from app.features.sync.routes import router as sync_router
 from app.features.trackers.routes import router as trackers_router
 
 logger = logging.getLogger("dayloop.api")
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
         projects_router,
         profile_router,
         tasks_router,
+        sync_router,
         notes_router,
         habits_router,
         finance_router,

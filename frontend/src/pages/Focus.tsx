@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlarmClock, BellRing, Flag, Pause, Play, RotateCcw, TimerReset } from "lucide-react";
 import { Card, CardHead, PageHead, Seg, confetti } from "../components/ui";
 import { toast } from "../lib/toast";
+import { cancelFocusReminder, nativeAlerts, requestAlertPermission, scheduleFocusReminder } from "../lib/notifications";
 
 type Mode = "focus" | "stopwatch" | "alarm";
 type AlertState = { title: string; body: string } | null;
@@ -18,6 +19,9 @@ const getNum = (name: string, fallback = 0) => { try { return Number(localStorag
 const setVal = (name: string, value: string | number | null) => { try { value == null ? localStorage.removeItem(key(name)) : localStorage.setItem(key(name), String(value)); } catch {} };
 
 async function ensureNotificationPermission() {
+  if (nativeAlerts) {
+    try { return await requestAlertPermission(); } catch { return "denied"; }
+  }
   if (typeof Notification === "undefined") return "unsupported";
   if (Notification.permission === "default") {
     try { return await Notification.requestPermission(); } catch { return "denied"; }
@@ -26,6 +30,8 @@ async function ensureNotificationPermission() {
 }
 
 async function notify(title: string, body: string) {
+  // On Android, scheduled OS alerts deliver the native notification.
+  if (nativeAlerts) { toast(`${title}: ${body}`); return; }
   if (typeof Notification === "undefined" || Notification.permission !== "granted") { toast(`${title}: ${body}`); return; }
   try {
     if ("serviceWorker" in navigator) {
@@ -95,13 +101,15 @@ export default function Focus() {
     if (remaining===0) setRemaining(minutes*60);
     if (focusRunning) {
       setFocusRunning(false); setFocusEnd(0); setVal("end", null);
+      void cancelFocusReminder("timer");
     } else {
       const duration = remaining===0 ? minutes*60 : remaining;
       const end = Date.now()+duration*1000; setFocusEnd(end); setVal("end",end); setFocusRunning(true);
+      void ensureNotificationPermission().then(() => scheduleFocusReminder("timer", end, "Focus complete", `${minutes} focused minutes finished.`));
     }
   };
-  const resetFocus = () => { setFocusRunning(false); setFocusEnd(0); setVal("end",null); setRemaining(minutes*60); };
-  const updateMinutes = (value:number) => { const next=Math.max(1,Math.min(240,value||1)); setMinutes(next); setVal("minutes",next); setFocusRunning(false); setFocusEnd(0); setVal("end",null); setRemaining(next*60); };
+  const resetFocus = () => { setFocusRunning(false); setFocusEnd(0); setVal("end",null); setRemaining(minutes*60); void cancelFocusReminder("timer"); };
+  const updateMinutes = (value:number) => { const next=Math.max(1,Math.min(240,value||1)); setMinutes(next); setVal("minutes",next); setFocusRunning(false); setFocusEnd(0); setVal("end",null); setRemaining(next*60); void cancelFocusReminder("timer"); };
   const toggleStopwatch = () => {
     if (stopwatchStart) {
       const total=elapsedBase+Math.floor((Date.now()-stopwatchStart)/1000); setElapsedBase(total); setElapsed(total); setStopwatchStart(0); setVal("stopwatch-base",total); setVal("stopwatch-start",null);
@@ -109,7 +117,7 @@ export default function Focus() {
   };
   const resetStopwatch=()=>{setElapsedBase(0);setElapsed(0);setStopwatchStart(0);setLaps([]);setVal("stopwatch-base",null);setVal("stopwatch-start",null);};
   const addLap=()=>{const previous=laps[0]?.total??0; setLaps((list)=>[{id:Date.now(),total:elapsed,split:elapsed-previous},...list]);};
-  const snooze=(mins:number)=>{const until=Date.now()+mins*60_000;setSnoozedUntil(until);setVal("snooze",until);setAlert(null);void notify("Reminder snoozed",`We'll notify you again in ${mins} minutes.`);};
+  const snooze=(mins:number)=>{const until=Date.now()+mins*60_000;setSnoozedUntil(until);setVal("snooze",until);setAlert(null);void scheduleFocusReminder("snooze",until,"Snoozed reminder","Your DayLoop reminder is due now.");void notify("Reminder snoozed",`We'll notify you again in ${mins} minutes.`);};
 
   return <>
     <PageHead title="Focus" sub="Timer, stopwatch, laps and alarms that stay active while you move around DayLoop">
@@ -129,8 +137,8 @@ export default function Focus() {
           <div className="lap-list">{laps.map((lap,index)=><div key={lap.id}><span>Lap {laps.length-index}</span><b>{fmt(lap.split)}</b><small>{fmt(lap.total)} total</small></div>)}{!laps.length&&<p className="mute sm">Use Lap while the stopwatch is running to compare intervals.</p>}</div>
         </>}
         {mode==="alarm" && <>
-          <div className="alarm-face"><AlarmClock/><input type="time" value={alarmTime} onChange={(e)=>{setAlarmTime(e.target.value);localStorage.setItem(key("alarm-time"),e.target.value);setAlarmArmed(false);setVal("alarm-armed",null);}}/></div>
-          <div className="focus-actions"><button className={alarmArmed?"btn pri":"btn"} onClick={()=>{void ensureNotificationPermission();const next=!alarmArmed;setAlarmArmed(next);setVal("alarm-armed",next?"1":null);}}>{alarmArmed?"Alarm armed":"Set alarm"}</button></div>
+          <div className="alarm-face"><AlarmClock/><input type="time" value={alarmTime} onChange={(e)=>{setAlarmTime(e.target.value);localStorage.setItem(key("alarm-time"),e.target.value);setAlarmArmed(false);setVal("alarm-armed",null);void cancelFocusReminder("alarm");}}/></div>
+          <div className="focus-actions"><button className={alarmArmed?"btn pri":"btn"} onClick={()=>{void ensureNotificationPermission().then(()=>{const next=!alarmArmed;setAlarmArmed(next);setVal("alarm-armed",next?"1":null);if(next){const [hh,mm]=alarmTime.split(":").map(Number);const when=new Date();when.setHours(hh,mm,0,0);if(when.getTime()<=Date.now())when.setDate(when.getDate()+1);void scheduleFocusReminder("alarm",when.getTime(),"DayLoop alarm",`Alarm for ${alarmTime}`);}else void cancelFocusReminder("alarm");});}}>{alarmArmed?"Alarm armed":"Set alarm"}</button></div>
           {snoozedUntil>0&&<p className="mute sm">Snoozed until {new Date(snoozedUntil).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</p>}
         </>}
       </Card>
