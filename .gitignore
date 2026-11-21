@@ -69,6 +69,7 @@ cypress/videos/
 # Project Storage, Logs & Editor/Tooling
 # ==========================================
 storage/
+docs/*
 *.log
 modifications.txt
 npm-debug.log*

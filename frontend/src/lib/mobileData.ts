@@ -47,14 +47,25 @@ export async function activateMobileAccount(uid: string): Promise<void> {
     }
     activeUid = null;
     const name = databaseName(uid);
-    const db = await sqlite.createConnection(name, false, "no-encryption", 1, false);
+    let db: SQLiteDBConnection;
+    try {
+      db = await sqlite.createConnection(name, false, "no-encryption", 1, false);
+    } catch (error) {
+      // Android may retain the native connection after a WebView reload while
+      // SQLiteConnection's JS registry has been recreated. Reclaim the handle,
+      // without deleting the on-device database or its pending mutations.
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/connection .*already exists/i.test(message)) throw error;
+      await CapacitorSQLite.closeConnection({ database: name, readonly: false });
+      db = await sqlite.createConnection(name, false, "no-encryption", 1, false);
+    }
     try {
       await db.open();
       await db.execute(SCHEMA);
       connection = db;
       activeUid = uid;
     } catch (error) {
-      await db.close().catch(() => {});
+      await sqlite.closeConnection(name, false).catch(() => {});
       throw error;
     }
   })();
