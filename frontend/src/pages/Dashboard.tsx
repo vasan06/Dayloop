@@ -4,7 +4,7 @@ import { ArrowUpRight, CalendarDays, Flame, Sparkles } from "lucide-react";
 import { Card, CardHead, Check22, Empty, Seg, Skeleton, confetti, useCountUp } from "../components/ui";
 import { Bars, Donut, Gauge, Heatmap, LineChart, Progress, Rings, Spark } from "../components/charts";
 import { PALETTE, isOpen, isOverdue, isToday, projectProgress, spendingByCategory } from "../lib/derive";
-import { useCategories, useEvents, useHabits, useInsights, useProfile, useProjects, useSummary, useTasks, useTransactions, useUpdateTask } from "../hooks/data";
+import { useEvents, useHabits, useInsights, useProfile, useProjects, useSummary, useTasks, useTransactions, useUpdateTask } from "../hooks/data";
 import { addDays, greeting, isoDate, money, num, shortDate, timeOf } from "../lib/format";
 import { toast } from "../lib/toast";
 
@@ -22,7 +22,6 @@ export default function Dashboard() {
   const habits = useHabits();
   const summary = useSummary();
   const txs = useTransactions();
-  const cats = useCategories();
   const events = useEvents();
   const insights = useInsights(35);
   const update = useUpdateTask();
@@ -70,7 +69,7 @@ export default function Dashboard() {
   const gauge = dueTodayTotal ? (doneToday / dueTodayTotal) * 100 : open.length ? 0 : 100;
   const net = num(summary.data?.net);
   const progress = useMemo(() => projectProgress(t), [t]);
-  const spend = spendingByCategory(txs.data ?? [], cats.data ?? []).slice(0, 5);
+  const spend = spendingByCategory(summary.data, 5);
   const spendTotal = spend.reduce((a, s) => a + s.value, 0);
   const todayEvents = (events.data ?? []).filter((e) => new Date(e.end_at) >= new Date()).slice(0, 4);
   const best = overdue[0] ?? today[0] ?? open.find((x) => x.priority === "high" || x.priority === "urgent") ?? open[0];

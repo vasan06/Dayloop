@@ -1,55 +1,34 @@
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+﻿from datetime import date, timedelta
+
+from app.services.streaks import habit_is_scheduled, local_today, streak_history, timezone_for_stored_value
 
 
-def habit_is_scheduled(day: date, schedule_type: str, schedule_config: dict) -> bool:
-    if schedule_type == "daily":
-        return True
-    weekdays = schedule_config.get("weekdays", [])
-    return day.weekday() in weekdays
+def habit_start_date(habit: dict, fallback: date) -> date:
+    created = habit.get("created_at")
+    return created.astimezone(timezone_for_stored_value(habit.get("timezone"))).date() if created else fallback
 
 
 def calculate_habit_metrics(habit: dict, entries: list[dict], today: date | None = None) -> dict:
-    timezone = ZoneInfo(habit.get("timezone") or "Asia/Kolkata")
-    local_today = today or datetime.now(timezone).date()
-    schedule_type = habit.get("schedule_type") or "daily"
-    schedule_config = habit.get("schedule_config") or {}
+    today = today or local_today(habit.get("timezone"))
+    schedule = habit.get("schedule_type") or "daily"
+    config = habit.get("schedule_config") or {}
+    history = streak_history(entries, schedule, config, today)
+    current = history["current"]
+    previous = history["previous"]
     by_date = {entry["entry_date"]: entry["status"] for entry in entries}
-    completed_today = by_date.get(local_today) == "completed"
-    cursor = local_today if completed_today else local_today - timedelta(days=1)
-    current_streak = 0
-    while cursor >= local_today - timedelta(days=365):
-        if habit_is_scheduled(cursor, schedule_type, schedule_config):
-            status = by_date.get(cursor)
-            if status == "completed":
-                current_streak += 1
-            elif status == "skipped":
-                cursor -= timedelta(days=1)
-                continue
-            else:
-                break
-        cursor -= timedelta(days=1)
-    start_window = local_today - timedelta(days=29)
-    scheduled_days = [
-        start_window + timedelta(days=offset)
-        for offset in range(30)
-        if habit_is_scheduled(start_window + timedelta(days=offset), schedule_type, schedule_config)
-    ]
-    counted_days = [day for day in scheduled_days if by_date.get(day) != "skipped"]
-    completed_days = sum(1 for day in counted_days if by_date.get(day) == "completed")
-    streak_start = (local_today - timedelta(days=current_streak - 1)) if current_streak else None
-    completed_dates = sorted(day for day in scheduled_days if by_date.get(day) == "completed")
+    start = habit_start_date(habit, today - timedelta(days=29))
+    days = [today - timedelta(days=offset) for offset in range(30)]
+    eligible = [d for d in days if (d >= start or d in by_date) and habit_is_scheduled(d, schedule, config) and by_date.get(d) != "skipped"]
+    completed_days = sum(by_date.get(d) == "completed" for d in eligible)
     return {
-        "current_streak": current_streak,
-        "completed_today": completed_today,
-        "current_streak_start": streak_start,
-        "current_streak_end": local_today if current_streak else None,
-        "previous_streak_start": completed_dates[0] if completed_dates else None,
-        "previous_streak_end": completed_dates[-1] if completed_dates else None,
-        "previous_streak_days": len(completed_dates),
-        "last_break_date": next((day for day in reversed(scheduled_days) if by_date.get(day) in {"missed", "failed"}), None),
-        "consistency_30d": round(completed_days / len(counted_days) * 100)
-        if counted_days
-        else 0,
-        "scheduled_days_30d": len(counted_days),
+        "current_streak": len(current),
+        "completed_today": by_date.get(today) == "completed",
+        "current_streak_start": current[0] if current else None,
+        "current_streak_end": current[-1] if current else None,
+        "previous_streak_start": previous[0] if previous else None,
+        "previous_streak_end": previous[-1] if previous else None,
+        "previous_streak_days": len(previous),
+        "last_break_date": history["last_break"],
+        "consistency_30d": round(100 * completed_days / len(eligible)) if eligible else 0,
+        "scheduled_days_30d": len(eligible),
     }

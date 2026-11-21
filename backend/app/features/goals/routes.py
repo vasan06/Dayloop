@@ -1,7 +1,11 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one
+
+from app.schemas.inputs import GoalFields
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 
@@ -17,7 +21,7 @@ def get_goals(user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.post("", status_code=201)
-def create_goal(payload: dict, user: dict = Depends(get_current_user)) -> dict:
+def create_goal(payload: GoalFields, user: dict = Depends(get_current_user)) -> dict:
     title = str(payload.get("title", "")).strip()
     if not title or len(title) > 160:
         raise HTTPException(status_code=422, detail="Goal title is required.")
@@ -40,7 +44,7 @@ def create_goal(payload: dict, user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.patch("/{goal_id}")
-def update_goal(goal_id: str, payload: dict, user: dict = Depends(get_current_user)) -> dict:
+def update_goal(goal_id: UUID, payload: GoalFields, user: dict = Depends(get_current_user)) -> dict:
     allowed = {
         "title",
         "description",

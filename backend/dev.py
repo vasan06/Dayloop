@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -121,10 +122,12 @@ def _clear_dayloop_port(port: int, service: str) -> None:
         raise RuntimeError(f"DayLoop could not release port {port}.")
 
 
-def _pipe_frontend_logs(process: subprocess.Popen) -> None:
-    assert process.stdout is not None
-    for line in process.stdout:
-        print(f"[frontend] {line}", end="", flush=True)
+def vite_command() -> list[str]:
+    node = shutil.which("node")
+    vite = ROOT / "node_modules" / "vite" / "bin" / "vite.js"
+    if not node or not vite.is_file():
+        raise RuntimeError("Install Node.js and run npm ci from the repository root.")
+    return [node, str(vite), "--host", WEB_HOST, "--port", str(WEB_PORT), "--strictPort"]
 
 
 def main() -> None:
@@ -136,12 +139,20 @@ def main() -> None:
         _clear_dayloop_port(API_PORT, "api")
         _clear_dayloop_port(WEB_PORT, "web")
 
-    frontend_command = [
-        "cmd.exe", "/d", "/s", "/c",
-        f'npm run dev -- --host {WEB_HOST} --port {WEB_PORT} --strictPort',
-    ]
+    import uvicorn
+    from app.db.migrate import apply_migrations
+    from app.main import app
+    from app.worker import process_due_notifications
+
+    applied = apply_migrations()
+    if applied:
+        LOG.info("Applied pending database migrations: %s", ", ".join(applied))
+    else:
+        LOG.info("Database schema is up to date.")
+
+    server = uvicorn.Server(uvicorn.Config(app, host=API_HOST, port=API_PORT))
     frontend_process = subprocess.Popen(
-        frontend_command,
+        vite_command(),
         cwd=FRONTEND,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -149,31 +160,42 @@ def main() -> None:
         bufsize=1,
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
     )
-    threading.Thread(
-        target=_pipe_frontend_logs, args=(frontend_process,), daemon=True,
-    ).start()
+    stopping = threading.Event()
+
+    def watch_frontend() -> None:
+        assert frontend_process.stdout is not None
+        for line in frontend_process.stdout:
+            print(f"[frontend] {line}", end="", flush=True)
+        if not stopping.is_set():
+            server.should_exit = True
+
+    def run_notifications() -> None:
+        # The development launcher owns the local in-app reminder worker so
+        # API, frontend and reminder delivery all share one terminal lifecycle.
+        stopping.wait(2)
+        while not stopping.is_set():
+            processed = 0
+            try:
+                processed = process_due_notifications()
+                if processed:
+                    LOG.info("Delivered %s in-app reminder%s.", processed, "" if processed == 1 else "s")
+            except Exception:
+                LOG.exception("Notification worker failed; retrying.")
+            stopping.wait(1 if processed else 5)
+
+    threading.Thread(target=watch_frontend, daemon=True).start()
+    threading.Thread(target=run_notifications, daemon=True, name="dayloop-notifications").start()
 
     try:
-        time.sleep(1.0)
-        if frontend_process.poll() is not None:
-            raise RuntimeError("Vite exited during startup. Check the [frontend] log above.")
-
-        import uvicorn
-        from app.main import app
-
         LOG.info("DayLoop API: http://%s:%s", API_HOST, API_PORT)
         LOG.info("DayLoop frontend: http://%s:%s", WEB_HOST, WEB_PORT)
         LOG.info("API docs: http://%s:%s/docs", API_HOST, API_PORT)
         LOG.info("Press Ctrl+C once to stop both services.")
-        uvicorn.run(
-            app,
-            host=API_HOST,
-            port=API_PORT,
-            log_level="info",
-            access_log=True,
-            reload=False,
-        )
+        server.run()
+        if frontend_process.poll() not in (None, 0):
+            raise RuntimeError("Vite stopped unexpectedly. Check the frontend log above.")
     finally:
+        stopping.set()
         if frontend_process.poll() is None:
             if os.name == "nt":
                 subprocess.run(

@@ -1,9 +1,13 @@
+from uuid import UUID
+
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one, get_connection
+
+from app.features.notes.blocks import validated_blocks
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -39,7 +43,7 @@ def create_page(payload: dict, user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.get("/{page_id}")
-def get_page(page_id: str, user: dict = Depends(get_current_user)) -> dict:
+def get_page(page_id: UUID, user: dict = Depends(get_current_user)) -> dict:
     page = fetch_one(
         "SELECT * FROM note_pages WHERE id=%s AND user_id=%s AND deleted_at IS NULL",
         (page_id, user["id"]),
@@ -55,54 +59,31 @@ def get_page(page_id: str, user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.put("/{page_id}/blocks")
-def save_blocks(page_id: str, payload: dict, user: dict = Depends(get_current_user)) -> dict:
-    blocks = payload.get("blocks", [])
-    if not isinstance(blocks, list) or len(blocks) > 1000:
-        raise HTTPException(status_code=422, detail="Blocks must be a list of at most 1000 items.")
-    if not fetch_one(
-        "SELECT id FROM note_pages WHERE id=%s AND user_id=%s AND deleted_at IS NULL",
-        (page_id, user["id"]),
-    ):
-        raise HTTPException(status_code=404, detail="Page not found.")
-    allowed_types = {
-        "paragraph",
-        "heading",
-        "bulleted_list",
-        "numbered_list",
-        "todo",
-        "quote",
-        "callout",
-        "code",
-        "divider",
-        "heading_1",
-        "heading_2",
-        "heading_3",
-        "heading_4",
-        "heading_5",
-        "heading_6",
-        "checkbox",
-        "progress",
-        "toggle",
-        "page",
-        "columns",
-    }
+def save_blocks(page_id: UUID, payload: dict, user: dict = Depends(get_current_user)) -> dict:
+    blocks = validated_blocks(payload)
+    title = payload.get("title")
+    if "title" in payload and (not isinstance(title, str) or not 1 <= len(title.strip()) <= 240):
+        raise HTTPException(422, "Page title must contain 1 to 240 characters.")
     with get_connection() as connection:
+        page = connection.execute(
+            "UPDATE note_pages SET title=COALESCE(%s,title),updated_at=now() "
+            "WHERE id=%s AND user_id=%s AND deleted_at IS NULL RETURNING id",
+            (title.strip() if title else None, page_id, user["id"]),
+        ).fetchone()
+        if not page:
+            raise HTTPException(status_code=404, detail="Page not found.")
         connection.execute("DELETE FROM note_blocks WHERE page_id=%s", (page_id,))
         for position, block in enumerate(blocks):
-            block_type = block.get("type", "paragraph")
-            if block_type not in allowed_types:
-                raise HTTPException(status_code=422, detail=f"Unsupported block type: {block_type}")
             connection.execute(
                 "INSERT INTO note_blocks (page_id,block_type,content,position) "
                 "VALUES (%s,%s,%s::jsonb,%s)",
-                (page_id, block_type, json.dumps(block.get("content", {})), position),
+                (page_id, block["type"], json.dumps(block["content"]), position),
             )
-        connection.execute("UPDATE note_pages SET updated_at=now() WHERE id=%s", (page_id,))
     return {"saved": len(blocks)}
 
 
 @router.patch("/{page_id}")
-def update_page(page_id: str, payload: dict, user: dict = Depends(get_current_user)) -> dict:
+def update_page(page_id: UUID, payload: dict, user: dict = Depends(get_current_user)) -> dict:
     title = str(payload.get("title", "")).strip()
     if not title or len(title) > 240:
         raise HTTPException(
@@ -119,7 +100,7 @@ def update_page(page_id: str, payload: dict, user: dict = Depends(get_current_us
 
 
 @router.delete("/{page_id}", status_code=204)
-def delete_page(page_id: str, user: dict = Depends(get_current_user)) -> Response:
+def delete_page(page_id: UUID, user: dict = Depends(get_current_user)) -> Response:
     page = fetch_one(
         "UPDATE note_pages SET deleted_at=now(),updated_at=now() WHERE id=%s AND user_id=%s "
         "AND deleted_at IS NULL RETURNING id",

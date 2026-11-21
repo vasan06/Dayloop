@@ -1,7 +1,11 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one
+
+from app.schemas.inputs import ProjectFields
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -20,7 +24,7 @@ def get_projects(user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.post("", status_code=201)
-def post_project(payload: dict, user: dict = Depends(get_current_user)) -> dict:
+def post_project(payload: ProjectFields, user: dict = Depends(get_current_user)) -> dict:
     name = str(payload.get("name", "")).strip()
     if not name or len(name) > 120:
         raise HTTPException(
@@ -29,20 +33,22 @@ def post_project(payload: dict, user: dict = Depends(get_current_user)) -> dict:
     if payload.get("status", "active") not in {"active", "on_hold", "completed"}:
         raise HTTPException(status_code=422, detail="Unsupported project status.")
     project = fetch_one(
-        "INSERT INTO projects (user_id,name,description,color,status) VALUES (%s,%s,%s,%s,%s) RETURNING *",
+        "INSERT INTO projects (user_id,name,description,color,status,start_date,due_date) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *",
         (
             user["id"],
             name,
             payload.get("description", ""),
             payload.get("color", "persimmon"),
             payload.get("status", "active"),
+            payload.get("start_date"),
+            payload.get("due_date"),
         ),
     )
     return {"item": project}
 
 
 @router.patch("/{project_id}")
-def patch_project(project_id: str, payload: dict, user: dict = Depends(get_current_user)) -> dict:
+def patch_project(project_id: UUID, payload: ProjectFields, user: dict = Depends(get_current_user)) -> dict:
     allowed = {"name", "description", "color", "status", "start_date", "due_date"}
     changes = {key: value for key, value in payload.items() if key in allowed}
     if not changes:
@@ -63,7 +69,7 @@ def patch_project(project_id: str, payload: dict, user: dict = Depends(get_curre
 
 
 @router.delete("/{project_id}", status_code=204)
-def archive_project(project_id: str, user: dict = Depends(get_current_user)) -> Response:
+def archive_project(project_id: UUID, user: dict = Depends(get_current_user)) -> Response:
     project = fetch_one(
         "UPDATE projects SET archived_at=now(), updated_at=now() "
         "WHERE id=%s AND user_id=%s AND archived_at IS NULL RETURNING id",

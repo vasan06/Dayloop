@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { KeyRound, Save, ShieldCheck } from "lucide-react";
 import { Card, CardHead, ErrorBox, PageHead, Skeleton } from "../components/ui";
 import { useProfile, useSaveProfile } from "../hooks/data";
+import { ReplayTour } from "../app/AuthGate";
 import { firebaseAuth } from "../lib/firebase";
 import { toast } from "../lib/toast";
 
@@ -10,6 +11,7 @@ const ROLES: [string, string][] = [["school_student", "School student"], ["stude
 
 export default function Profile() {
   const profile = useProfile();
+  const replayTour = useContext(ReplayTour);
   const save = useSaveProfile();
   const [f, setF] = useState({ display_name: "", username: "", age: "", role: "other" });
   const [resetBusy, setResetBusy] = useState(false);
@@ -59,7 +61,7 @@ export default function Profile() {
           <div className="security-intro"><span className="security-icon"><ShieldCheck className="ic" /></span><div><b>Keep your account secure</b><p className="mute sm">Request a secure password reset link sent to your account email.</p></div></div>
           <div className="security-email">{profile.data?.email || "No email address available"}</div>
           <button className="btn" onClick={() => void resetPassword()} disabled={resetBusy || !profile.data?.email || !firebaseAuth}><KeyRound className="ic" />{resetBusy ? "Sending…" : "Send password reset link"}</button>
-          <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => save.mutate({ ...f, age: Number(f.age), tour_completed: false, onboarding_completed: true })}>Replay product tour</button>
+          <button className="btn ghost" style={{ marginTop: 8 }} onClick={replayTour}>Replay product tour</button>
           {!firebaseAuth && <p className="mute sm">Password reset is managed by your current authentication provider.</p>}
         </Card>
       </div>}

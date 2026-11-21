@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, Query
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one
 
+from app.services.streaks import timezone_for_stored_value
+
 router = APIRouter(prefix="/insights", tags=["insights"])
 
 
@@ -16,6 +18,7 @@ def get_overview(
         fetch_one("SELECT COALESCE(timezone,'Asia/Kolkata') AS tz FROM users WHERE id=%s", (owner,))
         or {"tz": "Asia/Kolkata"}
     )["tz"]
+    timezone = timezone_for_stored_value(timezone).key
     series = fetch_all(
         "WITH d AS (SELECT (now() AT TIME ZONE %(tz)s)::date - g AS day "
         "FROM generate_series(%(days)s - 1, 0, -1) AS g) "
@@ -27,9 +30,9 @@ def get_overview(
         "(SELECT COUNT(*) FROM habit_entries e JOIN habits h ON h.id=e.habit_id "
         " WHERE h.user_id=%(u)s AND e.status='completed' AND e.entry_date = d.day) AS habits_done, "
         "COALESCE((SELECT SUM(amount) FROM finance_transactions f WHERE f.user_id=%(u)s "
-        " AND f.voided_at IS NULL AND f.transaction_type='income' AND f.transaction_date = d.day),0) AS income, "
+        " AND f.currency='INR' AND f.voided_at IS NULL AND f.transaction_type='income' AND f.transaction_date = d.day),0) AS income, "
         "COALESCE((SELECT SUM(amount) FROM finance_transactions f WHERE f.user_id=%(u)s "
-        " AND f.voided_at IS NULL AND f.transaction_type='expense' AND f.transaction_date = d.day),0) AS expenses "
+        " AND f.currency='INR' AND f.voided_at IS NULL AND f.transaction_type='expense' AND f.transaction_date = d.day),0) AS expenses "
         ",(SELECT COUNT(*) FROM projects p WHERE p.user_id=%(u)s AND p.archived_at IS NULL "
         " AND (p.created_at AT TIME ZONE %(tz)s)::date = d.day) AS projects_created "
         ",(SELECT COUNT(*) FROM calendar_events c WHERE c.user_id=%(u)s "

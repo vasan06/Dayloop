@@ -20,8 +20,8 @@ def validate_uuid(value: str | None, field_name: str) -> str | None:
     if value is None:
         return None
     try:
-        return str(UUID(value))
-    except (ValueError, TypeError) as error:
+        return str(UUID(str(value)))
+    except (ValueError, TypeError, AttributeError) as error:
         raise HTTPException(
             status_code=422, detail=f"{field_name} must be a valid UUID."
         ) from error
@@ -78,8 +78,8 @@ def create_task(user_id: str, payload: dict) -> dict:
     ):
         raise HTTPException(status_code=404, detail="Parent task not found.")
     return fetch_one(
-        "INSERT INTO tasks (user_id, project_id, parent_task_id, title, description, status, priority, due_at) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+        "INSERT INTO tasks (user_id, project_id, parent_task_id, title, description, status, priority, start_at, due_at, completed_at) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,CASE WHEN %s THEN now() END) RETURNING *",
         (
             user_id,
             project_id,
@@ -88,7 +88,9 @@ def create_task(user_id: str, payload: dict) -> dict:
             payload.get("description", ""),
             payload.get("status", "not_started"),
             payload.get("priority", "normal"),
+            payload.get("start_at"),
             payload.get("due_at"),
+            payload.get("status") == "completed",
         ),
     )
 
@@ -113,27 +115,6 @@ def update_task(user_id: str, task_id: str, payload: dict) -> dict:
         raise HTTPException(status_code=422, detail="Unsupported task status.")
     if "priority" in changes and changes["priority"] not in {"low", "normal", "high", "urgent"}:
         raise HTTPException(status_code=422, detail="Unsupported task priority.")
-    if "parent_task_id" in changes:
-        parent_id = validate_uuid(changes["parent_task_id"], "parent_task_id")
-        if parent_id == task_id:
-            raise HTTPException(status_code=422, detail="A task cannot be its own parent.")
-        if parent_id and not fetch_one(
-            "SELECT id FROM tasks WHERE id=%s AND user_id=%s AND deleted_at IS NULL",
-            (parent_id, user_id),
-        ):
-            raise HTTPException(status_code=404, detail="Parent task not found.")
-        if parent_id and fetch_one(
-            "WITH RECURSIVE descendants(id) AS (SELECT id FROM tasks WHERE parent_task_id=%s AND user_id=%s AND deleted_at IS NULL "
-            "UNION ALL SELECT t.id FROM tasks t JOIN descendants d ON t.parent_task_id=d.id WHERE t.user_id=%s AND t.deleted_at IS NULL) "
-            "SELECT 1 FROM descendants WHERE id=%s LIMIT 1",
-            (parent_id, user_id, user_id, task_id),
-        ):
-            raise HTTPException(
-                status_code=422, detail="A task cannot be moved beneath one of its descendants."
-            )
-        changes["parent_task_id"] = parent_id
-    if "status" in changes:
-        changes["completed_at"] = "now()" if changes["status"] == "completed" else None
     if "project_id" in changes:
         changes["project_id"] = validate_uuid(changes["project_id"], "project_id")
         if changes["project_id"] and not fetch_one(
@@ -141,17 +122,39 @@ def update_task(user_id: str, task_id: str, payload: dict) -> dict:
             (changes["project_id"], user_id),
         ):
             raise HTTPException(status_code=404, detail="Project not found.")
-    assignments = ", ".join(f"{field} = %s" for field in changes if field != "completed_at")
-    values = [value for field, value in changes.items() if field != "completed_at"]
-    if "completed_at" in changes:
-        assignments += ", completed_at = now()" if changes["completed_at"] == "now()" else ", completed_at = NULL"
-    updated = fetch_one(
-        f"UPDATE tasks SET {assignments}, updated_at=now() "
-        "WHERE user_id=%s AND id=%s AND deleted_at IS NULL RETURNING *",
-        tuple(
-            values + [user_id, task_id]
-        ),
-    )
+    with get_connection() as connection:
+        assignments = ", ".join(f"{field} = %s" for field in changes)
+        if "status" in changes:
+            assignments += (
+                ", completed_at = COALESCE(completed_at, now())"
+                if changes["status"] == "completed" else ", completed_at = NULL"
+            )
+        if "parent_task_id" in changes:
+            # Serialize tree edits so concurrent moves cannot turn siblings into a cycle.
+            connection.execute("SELECT id FROM users WHERE id=%s FOR UPDATE", (user_id,))
+            parent_id = validate_uuid(changes["parent_task_id"], "parent_task_id")
+            if parent_id == task_id:
+                raise HTTPException(status_code=422, detail="A task cannot be its own parent.")
+            if parent_id and not connection.execute(
+                "SELECT id FROM tasks WHERE id=%s AND user_id=%s AND deleted_at IS NULL",
+                (parent_id, user_id),
+            ).fetchone():
+                raise HTTPException(status_code=404, detail="Parent task not found.")
+            if parent_id and connection.execute(
+                "WITH RECURSIVE descendants(id) AS (SELECT id FROM tasks WHERE parent_task_id=%s AND user_id=%s AND deleted_at IS NULL "
+                "UNION SELECT t.id FROM tasks t JOIN descendants d ON t.parent_task_id=d.id WHERE t.user_id=%s AND t.deleted_at IS NULL) "
+                "SELECT 1 FROM descendants WHERE id=%s LIMIT 1",
+                (task_id, user_id, user_id, parent_id),
+            ).fetchone():
+                raise HTTPException(
+                    status_code=422, detail="A task cannot be moved beneath one of its descendants."
+                )
+            changes["parent_task_id"] = parent_id
+        updated = connection.execute(
+            f"UPDATE tasks SET {assignments}, updated_at=now() "
+            "WHERE user_id=%s AND id=%s AND deleted_at IS NULL RETURNING *",
+            (*changes.values(), user_id, task_id),
+        ).fetchone()
     if not updated:
         raise HTTPException(status_code=404, detail="Task not found.")
     return updated
@@ -163,7 +166,7 @@ def delete_task(user_id: str, task_id: str) -> None:
         result = connection.execute(
             "WITH RECURSIVE task_tree(id) AS ("
             "SELECT id FROM tasks WHERE id=%s AND user_id=%s AND deleted_at IS NULL "
-            "UNION ALL SELECT child.id FROM tasks child JOIN task_tree parent "
+            "UNION SELECT child.id FROM tasks child JOIN task_tree parent "
             "ON child.parent_task_id=parent.id WHERE child.user_id=%s AND child.deleted_at IS NULL) "
             "UPDATE tasks SET deleted_at=now(),updated_at=now() "
             "WHERE user_id=%s AND id IN (SELECT id FROM task_tree) RETURNING id",
@@ -175,20 +178,20 @@ def delete_task(user_id: str, task_id: str) -> None:
 
 def set_task_dependencies(user_id: str, task_id: str, dependency_ids: list[str]) -> list[dict]:
     task_id = validate_uuid(task_id, "task_id")
+    if not isinstance(dependency_ids, list) or any(not isinstance(value, str) for value in dependency_ids):
+        raise HTTPException(status_code=422, detail="depends_on must be a list of task identifiers.")
     ids = list(dict.fromkeys(validate_uuid(value, "dependency_id") for value in dependency_ids))
     if task_id in ids:
         raise HTTPException(status_code=422, detail="A task cannot depend on itself.")
-    with_dependency = (
-        fetch_all(
-            "SELECT id FROM tasks WHERE user_id=%s AND id = ANY(%s::uuid[]) AND deleted_at IS NULL",
-            (user_id, ids),
-        )
-        if ids
-        else []
-    )
-    if len(with_dependency) != len(ids):
-        raise HTTPException(status_code=404, detail="One or more dependency tasks were not found.")
     with get_connection() as connection:
+        connection.execute("SELECT id FROM users WHERE id=%s FOR UPDATE", (user_id,))
+        if ids:
+            found = connection.execute(
+                "SELECT id FROM tasks WHERE user_id=%s AND id=ANY(%s::uuid[]) AND deleted_at IS NULL",
+                (user_id, ids),
+            ).fetchall()
+            if len(found) != len(ids):
+                raise HTTPException(status_code=404, detail="One or more dependency tasks were not found.")
         exists = connection.execute(
             "SELECT 1 FROM tasks WHERE id=%s AND user_id=%s AND deleted_at IS NULL",
             (task_id, user_id),
@@ -209,9 +212,9 @@ def set_task_dependencies(user_id: str, task_id: str, dependency_ids: list[str])
             raise HTTPException(status_code=422, detail="These dependencies would create a cycle.")
         connection.execute("DELETE FROM task_dependencies WHERE task_id=%s", (task_id,))
         if ids:
-            connection.executemany(
-                "INSERT INTO task_dependencies (task_id, depends_on_task_id) VALUES (%s,%s)",
-                [(task_id, dependency_id) for dependency_id in ids],
+            connection.execute(
+                "INSERT INTO task_dependencies (task_id, depends_on_task_id) SELECT %s,unnest(%s::uuid[])",
+                (task_id, ids),
             )
         return connection.execute(
             "SELECT d.depends_on_task_id AS id, t.title, t.status FROM task_dependencies d "

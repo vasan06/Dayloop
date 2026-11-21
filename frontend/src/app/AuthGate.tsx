@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { createContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import Landing from "./Landing";
 import { Logo } from "../components/Shell";
+import { Modal } from "../components/ui";
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
@@ -71,12 +72,18 @@ const roleOptions = [
   ["other", "Other"],
 ];
 
+export const ReplayTour = createContext<() => void>(() => {});
+
 type Mode = "landing" | "signin" | "signup" | "forgot";
 
-export default function AuthGate({ children }: { children: (signOut: () => void) => ReactNode }) {
+export default function AuthGate({ children }: { children: (signOut: () => void, identity: string) => ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [localAccess, setLocalAccess] = useState(
-    () => import.meta.env.DEV && window.localStorage.getItem("dayloop:local-access") === "true",
+    () => {
+      if (firebaseConfigured) return false;
+      try { return import.meta.env.DEV && localStorage.getItem("dayloop:local-access") === "true"; }
+      catch { return false; }
+    },
   );
   const [loading, setLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
@@ -94,6 +101,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [replaying, setReplaying] = useState(false);
   const [tourStep, setTourStep] = useState(0);
   const [demoTodos, setDemoTodos] = useState(["Review project brief", "Plan the week"]);
   const [demoTodoInput, setDemoTodoInput] = useState("");
@@ -105,13 +113,15 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
 
   useEffect(() => {
     let active = true;
+    let generation = 0;
 
     async function checkProfile(displayName = "") {
+      const request = ++generation;
       setLoading(true);
       setProfileError("");
       try {
         const response = await apiRequest<{ item: Profile | null }>("/profile");
-        if (!active) return;
+        if (!active || generation !== request) return;
         const profile = response.item;
         const complete = Boolean(profile?.username && profile.age && profile.role);
         setProfileReady(complete);
@@ -121,13 +131,13 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
           age: profile?.age ? String(profile.age) : "",
           role: profile?.role || "",
         });
-        if (profile && complete && !profile.tour_completed) setTourOpen(true);
+        setTourOpen(Boolean(complete && !profile?.tour_completed));
       } catch (reason) {
-        if (active) {
+        if (active && request === generation) {
           setProfileError(reason instanceof Error ? reason.message : "Could not load your profile.");
         }
       } finally {
-        if (active) setLoading(false);
+        if (active && request === generation) setLoading(false);
       }
     }
 
@@ -141,7 +151,19 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
 
     const unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
       if (!active) return;
+      generation++;
       setUser(nextUser);
+      setProfileReady(false);
+      setDraft(emptyProfile);
+      setTourOpen(false);
+      setReplaying(false);
+      setTourStep(0);
+      if (nextUser) {
+        setPassword("");
+        setConfirmPassword("");
+        setShowPw(false);
+        setShowConfirmPw(false);
+      }
       setError("");
       if (nextUser) {
         void checkProfile(nextUser.displayName ?? "");
@@ -166,6 +188,16 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
     setError("");
     setInfo("");
     if (register) {
+      if (!draft.display_name.trim() || !draft.username.trim() || !draft.age || !draft.role) {
+        setError("Add your name, username, age and role before creating your account."); return;
+      }
+      if (!/^[A-Za-z0-9_]{3,24}$/.test(draft.username.trim())) {
+        setError("Username must be 3–24 characters using letters, numbers or underscores."); return;
+      }
+      const age = Number(draft.age);
+      if (!Number.isInteger(age) || age < 13 || age > 120) {
+        setError("Enter an age between 13 and 120."); return;
+      }
       if (password.length < 8) { setError("Use at least 8 characters for a stronger password."); return; }
       if (password !== confirmPassword) { setError("Your passwords do not match yet. Check both fields and try again."); return; }
     }
@@ -175,24 +207,20 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
         await sendPasswordResetEmail(firebaseAuth, email.trim());
         setInfo("If that email has an account, a reset link is on its way.");
       } else if (register) {
-        const username = draft.username.trim();
-        const usernameValid = username.length >= 3 && username.length <= 24 && Array.from(username).every((character) => /[a-zA-Z0-9_]/.test(character));
-        if (!usernameValid || !draft.role || Number(draft.age) < 13 || Number(draft.age) > 120) {
-          setError("Use a 3–24 character username, choose a role and enter a realistic age.");
-          setBusy(false);
-          return;
-        }
-        await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+        const credential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+        await credential.user.getIdToken(true);
         await apiRequest("/profile", {
           method: "PUT",
           body: JSON.stringify({
-            display_name: draft.display_name.trim() || email.trim().split("@")[0],
-            username: draft.username.trim(),
+            display_name: draft.display_name.trim(),
+            username: draft.username.trim().toLowerCase(),
             age: Number(draft.age),
             role: draft.role,
-            onboarding_completed: false,
+            onboarding_completed: true,
           }),
         });
+        setProfileReady(true);
+        setTourOpen(true);
       } else {
         await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
       }
@@ -209,7 +237,11 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
     setBusy(true);
     try {
       const provider = new GoogleAuthProvider();
-      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      // Popup is reliable for localhost development, including Chrome device emulation.
+      // Redirect auth can fail in emulated mobile mode because the user-agent reports Android.
+      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+        await signInWithPopup(firebaseAuth, provider);
+      } else if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
         await signInWithRedirect(firebaseAuth, provider);
       } else {
         await signInWithPopup(firebaseAuth, provider);
@@ -254,11 +286,10 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
         setError(reason instanceof Error ? reason.message : "Could not sign out.");
       }
     }
-    if (localAccess) {
-      window.localStorage.removeItem("dayloop:local-access");
-      setLocalAccess(false);
-      setProfileReady(false);
-    }
+    try { localStorage.removeItem("dayloop:local-access"); } catch { /* Private browsing. */ }
+    setLocalAccess(false);
+    setProfileReady(false);
+    setMode("signin");
   }
 
   useEffect(() => {
@@ -348,6 +379,12 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
         <button className="btn pri" disabled={busy}>{busy ? "Saving…" : "Continue to DayLoop"}</button>
         <button type="button" className="btn ghost" onClick={() => void leaveWorkspace()}>Sign out</button></form>);
     }
+    const workspace = <ReplayTour.Provider value={() => {
+      setReplaying(true);
+      setError("");
+      setTourStep(0);
+      setTourOpen(true);
+    }}>{children(() => void leaveWorkspace(), user ? `firebase:${user.uid}` : "local")}</ReplayTour.Provider>;
     if (tourOpen) {
       const tourSteps = [
         ["Dashboard", "See your day and priorities at a glance."],
@@ -363,14 +400,39 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
         ["Sidebar", "Collapse or jump between every feature."],
       ];
       const finishTour = async () => {
-        setTourOpen(false);
-        setTourStep(0);
-        await apiRequest("/profile", { method: "PUT", body: JSON.stringify({ display_name: draft.display_name, username: draft.username, age: Number(draft.age), role: draft.role, onboarding_completed: true, tour_completed: true }) }).catch(() => undefined);
+        if (busy) return;
+        if (replaying) {
+          setTourOpen(false);
+          setReplaying(false);
+          return;
+        }
+        setBusy(true);
+        setError("");
+        try {
+          await apiRequest("/profile", { method: "PUT", body: JSON.stringify({ display_name: draft.display_name, username: draft.username, age: Number(draft.age), role: draft.role, onboarding_completed: true, tour_completed: true }) });
+          setTourOpen(false);
+          setTourStep(0);
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : "Could not save your tour preference.");
+        } finally { setBusy(false); }
       };
       const [tourTitle, tourBody] = tourSteps[tourStep];
-      return <><>{children(() => void leaveWorkspace())}</><div className="tour-backdrop" role="presentation"><section className="tour-modal" role="dialog" aria-modal="true" aria-label="DayLoop product tour"><div className="mono">DAYLOOP TOUR · {tourStep + 1} OF {tourSteps.length}</div><h2>{tourTitle}</h2><p>{tourBody}</p><div className="tour-actions"><button className="btn ghost" onClick={() => void finishTour()}>Skip tour</button><div className="sp" /><button className="btn" onClick={() => void finishTour()} disabled={tourStep < tourSteps.length - 1} style={{ visibility: tourStep < tourSteps.length - 1 ? "hidden" : "visible" }}>{tourStep === tourSteps.length - 1 ? "Finish" : "Next"}</button>{tourStep < tourSteps.length - 1 && <button className="btn pri" onClick={() => setTourStep((step) => Math.min(tourSteps.length - 1, step + 1))}>Next</button>}</div></section></div></>;
+      return <>{workspace}
+        <Modal title={tourTitle} onClose={() => void finishTour()}>
+          <p className="mono">DayLoop tour / {tourStep + 1} of {tourSteps.length}</p>
+          <p>{tourBody}</p>
+          {error && <p role="alert">{error}</p>}
+          <div className="tour-actions">
+            <button className="btn ghost" disabled={busy} onClick={() => void finishTour()}>Skip tour</button>
+            <div className="sp" />
+            {tourStep === tourSteps.length - 1
+              ? <button className="btn pri" disabled={busy} onClick={() => void finishTour()}>Finish</button>
+              : <button className="btn pri" onClick={() => setTourStep((step) => step + 1)}>Next</button>}
+          </div>
+        </Modal>
+      </>;
     }
-    return <>{children(() => void leaveWorkspace())}</>;
+    return <>{workspace}</>;
   }
 
   if (mode === "landing") return <Landing onSignIn={() => setMode("signin")} onSignUp={() => setMode("signup")} />;
@@ -379,16 +441,18 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
   return shell(<form className="auth-form" onSubmit={submitAuth}>
     {brand}<div className="mono auth-kicker">{mode === "signup" ? "START YOUR DAYLOOP" : mode === "forgot" ? "ACCOUNT RECOVERY" : "WELCOME BACK"}</div><h1 className="auth-title">{titles[mode]}</h1>
     <p className="auth-description">{mode === "forgot" ? "We’ll email you a secure link to reset your password." : mode === "signup" ? "Create one account for your plans, habits and progress." : "Sign in to pick up right where you left off."}</p>
-    {!firebaseConfigured && <div className="auth-config-warning" role="alert"><b>Firebase isn’t available in this Vite session.</b><span>Missing environment values: {firebaseMissingConfig.join(", ") || "Firebase could not be initialised"}.</span><small>After updating frontend/.env, restart the frontend server. You can still use the local development identity below.</small></div>}
+    {!firebaseConfigured && <div className="auth-config-warning" role="alert"><b>Firebase isn’t available in this Vite session.</b><span>Missing environment values: {firebaseMissingConfig.join(", ") || "Firebase could not be initialised"}.</span><small>{import.meta.env.DEV ? "Restart the frontend server after updating frontend/.env, or continue with the local identity below." : "Contact your workspace administrator to restore sign-in."}</small></div>}
+    {register && <>
+      <div className="field"><label htmlFor="a-name">Name</label><input id="a-name" autoComplete="name" maxLength={80} required value={draft.display_name} onChange={(e) => setDraft({ ...draft, display_name: e.target.value })} /></div>
+      <div className="field"><label htmlFor="a-username">Username</label><input id="a-username" autoComplete="username" minLength={3} maxLength={24} pattern="[A-Za-z0-9_]{3,24}" required value={draft.username} onChange={(e) => setDraft({ ...draft, username: e.target.value.toLowerCase() })} /></div>
+      <div className="fr"><div className="field"><label htmlFor="a-age">Age</label><input id="a-age" type="number" min={13} max={120} required value={draft.age} onChange={(e) => setDraft({ ...draft, age: e.target.value })} /></div>
+        <div className="field"><label htmlFor="a-role">Role</label><select id="a-role" required value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })}><option value="" disabled>Select</option>{roleOptions.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div></div>
+    </>}
     <div className="field"><label htmlFor="a-email">Email</label><input id="a-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
     {mode !== "forgot" && <>
       <div className="field auth-password-field"><label htmlFor="a-pw">Password</label><div className="pw"><input id="a-pw" type={showPw ? "text" : "password"} autoComplete={register ? "new-password" : "current-password"} minLength={register ? 8 : 6} required value={password} onChange={(e) => setPassword(e.target.value)} /><button type="button" aria-label={showPw ? "Hide password" : "Show password"} onClick={() => setShowPw((s) => !s)}>{showPw ? <EyeOff className="ic" /> : <Eye className="ic" />}</button></div>
         {register && <div className="auth-strength"><div className={`meter s${strength}`} aria-hidden="true"><i /><i /><i /><i /></div><small>{strength < 2 ? "Use 8+ characters and mix letter types" : strength < 4 ? "Good start — add a number or symbol" : "Strong password"}</small></div>}</div>
       {register && <div className="field auth-password-field"><label htmlFor="a-confirm-pw">Confirm password</label><div className={`pw ${confirmPassword ? passwordMatches ? "is-match" : "is-mismatch" : ""}`}><input id="a-confirm-pw" type={showConfirmPw ? "text" : "password"} autoComplete="new-password" minLength={8} required value={confirmPassword} aria-invalid={confirmPassword.length > 0 && !passwordMatches} aria-describedby="password-match-hint" onChange={(e) => setConfirmPassword(e.target.value)} /><button type="button" aria-label={showConfirmPw ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmPw((s) => !s)}>{showConfirmPw ? <EyeOff className="ic" /> : <Eye className="ic" />}</button></div><small id="password-match-hint" className={confirmPassword ? passwordMatches ? "auth-match-good" : "auth-match-bad" : "auth-match-neutral"}>{confirmPassword ? passwordMatches ? "Passwords match" : "Passwords do not match yet" : "Enter the same password again to confirm."}</small></div>}
-    </>}
-    {register && <>
-      <div className="field"><label htmlFor="a-username">Username</label><input id="a-username" autoComplete="username" minLength={3} maxLength={24} pattern="[A-Za-z0-9_]{3,24}" required value={draft.username} onChange={(event) => setDraft({ ...draft, username: event.target.value.toLowerCase() })} /></div>
-      <div className="fr"><div className="field"><label htmlFor="a-age">Age</label><input id="a-age" type="number" min={13} max={120} required value={draft.age} onChange={(event) => setDraft({ ...draft, age: event.target.value })} /></div><div className="field"><label htmlFor="a-role">Role</label><select id="a-role" required value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })}><option value="" disabled>Select role</option>{roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></div>
     </>}
     {error && <p className="err" role="alert">{error}</p>}{info && <p className="mute" role="status">{info}</p>}
     <button className="btn pri auth-submit" disabled={!firebaseAuth || busy || (register && (!passwordMatches || password.length < 8))}>{busy ? "Please wait…" : mode === "signup" ? "Create your account" : mode === "forgot" ? "Send reset link" : "Sign in to DayLoop"}</button>
@@ -402,10 +466,10 @@ export default function AuthGate({ children }: { children: (signOut: () => void)
       {mode === "signin" && <button type="button" className="lnk" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { setMode("forgot"); setError(""); setInfo(""); }}>Forgot password?</button>}
       {mode === "signup" && <button type="button" className="lnk" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { setMode("landing"); setError(""); }}>Back to DayLoop</button>}
     </div>
-    {import.meta.env.DEV && (
+    {import.meta.env.DEV && !firebaseConfigured && (
       <>
         <div className="auth-divider"><span>OR</span></div>
-        <button type="button" className="btn auth-local" onClick={() => { window.localStorage.setItem("dayloop:local-access", "true"); setLocalAccess(true); setError(""); }}>
+        <button type="button" className="btn auth-local" onClick={() => { try { localStorage.setItem("dayloop:local-access", "true"); } catch { /* Use this session only. */ } setLoading(true); setLocalAccess(true); setError(""); }}>
           <span className="auth-local-dot" /> Continue with local development identity
         </button>
       </>

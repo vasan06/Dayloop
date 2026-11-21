@@ -1,7 +1,7 @@
 import hashlib
 import os
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -25,7 +25,7 @@ ALLOWED_TYPES = {
 
 def get_storage_root() -> Path:
     configured = Path(get_settings()["attachment_root"])
-    root = configured if configured.is_absolute() else Path.cwd() / configured
+    root = configured if configured.is_absolute() else Path(__file__).resolve().parents[3] / configured
     root.mkdir(parents=True, exist_ok=True)
     return root.resolve()
 
@@ -87,7 +87,7 @@ async def upload_attachment(
 
 
 @router.get("/{attachment_id}")
-def download_attachment(attachment_id: str, user: dict = Depends(get_current_user)) -> FileResponse:
+def download_attachment(attachment_id: UUID, user: dict = Depends(get_current_user)) -> FileResponse:
     item = fetch_one(
         "SELECT original_name,storage_path,mime_type FROM attachments "
         "WHERE id=%s AND user_id=%s AND deleted_at IS NULL",
@@ -104,7 +104,7 @@ def download_attachment(attachment_id: str, user: dict = Depends(get_current_use
 
 
 @router.delete("/{attachment_id}", status_code=204)
-def delete_attachment(attachment_id: str, user: dict = Depends(get_current_user)) -> Response:
+def delete_attachment(attachment_id: UUID, user: dict = Depends(get_current_user)) -> Response:
     item = fetch_one(
         "UPDATE attachments SET deleted_at=now() WHERE id=%s AND user_id=%s "
         "AND deleted_at IS NULL RETURNING storage_path",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card, CardHead, PageHead } from "../components/ui";
-import { applyTheme } from "../components/Shell";
+import { setTheme, useTheme } from "../hooks/useTheme";
 import { useProfile, useSaveProfile } from "../hooks/data";
 
 const ROLES: [string, string][] = [["school_student", "School student"], ["student", "College / university student"], ["working", "Working professional"], ["freelancer", "Freelancer"], ["entrepreneur", "Entrepreneur"], ["organization", "Organization"], ["educator", "Educator"], ["other", "Other"]];
@@ -9,9 +9,8 @@ export default function Settings() {
   const profile = useProfile();
   const save = useSaveProfile();
   const [f, setF] = useState({ display_name: "", username: "", age: "", role: "other" });
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("dl-theme") ?? "light"; } catch { return "light"; } });
+  const theme = useTheme();
   useEffect(() => { const p = profile.data; if (p) setF({ display_name: p.display_name ?? "", username: p.username ?? "", age: p.age ? String(p.age) : "", role: p.role ?? "other" }); }, [profile.data]);
-  const pick = (t: string) => { setTheme(t); applyTheme(t); try { localStorage.setItem("dl-theme", t); } catch { /* ignore */ } };
   const err = save.error instanceof Error ? save.error.message : "";
 
   return (
@@ -30,7 +29,7 @@ export default function Settings() {
             <button className="btn pri" disabled={save.isPending}>{save.isPending ? "Saving…" : "Save profile"}</button>
           </form>
         </Card>
-        <Card className="s5"><CardHead title="Appearance" /><div className="tabs">{["system", "light", "dark"].map((t) => <button key={t} className={theme === t ? "on" : ""} onClick={() => pick(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}</div><p className="mute sm">System follows your device. Your choice is saved in this browser.</p></Card>
+        <Card className="s5"><CardHead title="Appearance" /><div className="tabs">{["system", "light", "dark"].map((t) => <button key={t} className={theme === t ? "on" : ""} aria-pressed={theme === t} onClick={() => setTheme(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}</div><p className="mute sm">System follows your device. Your choice is saved in this browser.</p></Card>
       </div>
     </>
   );

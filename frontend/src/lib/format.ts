@@ -4,7 +4,7 @@ export const num = (value: unknown): number => {
 };
 
 export const money = (value: unknown, currency = "INR"): string =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(num(value));
+  new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(num(value));
 
 export const compact = (value: unknown): string =>
   new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 }).format(num(value));
@@ -23,10 +23,14 @@ export const addDays = (date: Date, days: number): Date => {
   return next;
 };
 
-export const dayKey = (value: string | null | undefined): string => (value ? isoDate(new Date(value)) : "");
+function localDate(value: string): Date {
+  return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value + "T12:00:00" : value);
+}
+
+export const dayKey = (value: string | null | undefined): string => (value ? isoDate(localDate(value)) : "");
 
 export const shortDate = (value: string | null | undefined): string =>
-  value ? new Date(value).toLocaleDateString("en", { day: "numeric", month: "short" }) : "No date";
+  value ? localDate(value).toLocaleDateString("en", { day: "numeric", month: "short" }) : "No date";
 
 export const timeOf = (value: string): string =>
   new Date(value).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" });
