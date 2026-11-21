@@ -16,6 +16,8 @@ import {
 } from "firebase/auth";
 import { apiRequest } from "../lib/api";
 import { firebaseAuth, firebaseConfigured, firebaseMissingConfig } from "../lib/firebase";
+import { deactivateMobileAccount, isNativeMobile } from "../lib/mobileData";
+import { resetMobileWorkspace } from "../lib/mobileApi";
 
 type Profile = {
   email: string | null;
@@ -194,6 +196,10 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
       } else if (localAccess) {
         void checkProfile();
       } else {
+        if (isNativeMobile) {
+          resetMobileWorkspace();
+          void deactivateMobileAccount().catch(() => {});
+        }
         setProfileReady(false);
         setProfileError("");
         setLoading(false);

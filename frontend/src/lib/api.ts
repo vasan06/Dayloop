@@ -1,4 +1,6 @@
 import { firebaseAuth, firebaseConfigured } from "./firebase";
+import { isNativeMobile } from "./mobileData";
+import { mobileRequest } from "./mobileApi";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, "");
 
@@ -18,7 +20,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function directApiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -59,5 +61,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   }
 
   if (response.status === 204) return undefined as T;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new ApiRequestError("The API returned a page instead of JSON. Check VITE_API_URL and FastAPI connectivity.", response.status);
+  }
   return response.json() as Promise<T>;
+}
+
+export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  if (!isNativeMobile) return directApiRequest<T>(path, options);
+  return mobileRequest<T>(path, options, (url, init) => directApiRequest(url, init));
 }

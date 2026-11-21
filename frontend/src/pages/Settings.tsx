@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LayoutTemplate, Palette, Play, Type } from "lucide-react";
 import { Card, CardHead, PageHead } from "../components/ui";
+import MobileSyncPanel from "../components/MobileSyncPanel";
 import { setTheme, useTheme } from "../hooks/useTheme";
 
 type Preset = "default" | "paper" | "calm" | "mono" | "ocean" | "sunset";
@@ -31,6 +32,7 @@ export default function Settings(){
   return <>
     <PageHead title="Settings" sub="Shape the workspace around how you like to work" />
     <div className="settings-layout">
+      <MobileSyncPanel />
       <Card className="settings-main">
         <CardHead title="Appearance" />
         <div className="settings-section">

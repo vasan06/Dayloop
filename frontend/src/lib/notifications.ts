@@ -65,3 +65,22 @@ export async function scheduleUpcomingAlerts(items: UpcomingAlert[]): Promise<vo
     })),
   });
 }
+
+/** Schedule focus/alarms with Android's OS rather than relying on WebView timers. */
+export async function scheduleFocusReminder(key: string, at: number, title: string, body: string): Promise<void> {
+  if (!nativeAlerts || at <= Date.now()) return;
+  if (await alertPermission() !== "granted") return;
+  await LocalNotifications.cancel({ notifications: [{ id: alertId("focus:" + key) }] });
+  await LocalNotifications.schedule({
+    notifications: [{
+      id: alertId("focus:" + key),
+      title, body,
+      extra: { dayloop: true, focus: true },
+      schedule: { at: new Date(at) },
+    }],
+  });
+}
+export async function cancelFocusReminder(key: string): Promise<void> {
+  if (!nativeAlerts) return;
+  await LocalNotifications.cancel({ notifications: [{ id: alertId("focus:" + key) }] });
+}

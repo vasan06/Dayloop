@@ -1,4 +1,6 @@
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { isNativeMobile } from "../lib/mobileData";
+import { openMobileWorkspace, preloadMobileWorkspace, scheduleMobileSync } from "../lib/mobileApi";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "../lib/toast";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
@@ -31,6 +33,23 @@ function WorkspaceSession({ children }: { children: ReactNode }) {
     }),
     defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: false, retry: 1 } },
   }));
+  useEffect(() => {
+    if (!isNativeMobile) return;
+    let live = true;
+    const refresh = () => { if (live) void client.invalidateQueries(); };
+    window.addEventListener("dayloop:mobile-data", refresh);
+    window.addEventListener("dayloop:mobile-sync", refresh);
+    const stop = scheduleMobileSync();
+    void openMobileWorkspace().then((ready) => {
+      if (ready && live) void preloadMobileWorkspace();
+    }).catch(() => {});
+    return () => {
+      live = false;
+      stop();
+      window.removeEventListener("dayloop:mobile-data", refresh);
+      window.removeEventListener("dayloop:mobile-sync", refresh);
+    };
+  }, [client]);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 

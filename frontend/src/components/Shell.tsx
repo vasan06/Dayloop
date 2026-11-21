@@ -121,6 +121,9 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
 
   useEffect(() => {
     const notifyFocus = async (title: string, body: string) => {
+      // Native focus timers/alarms are scheduled by the Focus screen.
+      // Do not emit another OS notification when the WebView timer ticks.
+      if (nativeAlerts) { toast(`${title}: ${body}`); return; }
       if (await alertPermission() === "granted") {
         try { await showAlert(title, body, "dayloop-focus:" + Date.now()); return; }
         catch { /* fall through to in-app toast */ }
