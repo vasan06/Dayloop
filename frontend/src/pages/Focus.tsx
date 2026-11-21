@@ -17,13 +17,23 @@ const fmt = (seconds: number) => {
 const getNum = (name: string, fallback = 0) => { try { return Number(localStorage.getItem(key(name)) || fallback); } catch { return fallback; } };
 const setVal = (name: string, value: string | number | null) => { try { value == null ? localStorage.removeItem(key(name)) : localStorage.setItem(key(name), String(value)); } catch {} };
 
+async function ensureNotificationPermission() {
+  if (typeof Notification === "undefined") return "unsupported";
+  if (Notification.permission === "default") {
+    try { return await Notification.requestPermission(); } catch { return "denied"; }
+  }
+  return Notification.permission;
+}
+
 async function notify(title: string, body: string) {
   if (typeof Notification === "undefined" || Notification.permission !== "granted") { toast(`${title}: ${body}`); return; }
   try {
     if ("serviceWorker" in navigator) {
-      const registration = await navigator.serviceWorker.ready;
-      await registration.showNotification(title, { body, tag: "dayloop-focus", requireInteraction: true });
-      return;
+      const registration = await navigator.serviceWorker.getRegistration("/");
+      if (registration) {
+        await registration.showNotification(title, { body, tag: "dayloop-focus", requireInteraction: true });
+        return;
+      }
     }
     new Notification(title, { body, tag: "dayloop-focus" });
   } catch { try { new Notification(title, { body }); } catch { toast(`${title}: ${body}`); } }
@@ -80,6 +90,7 @@ export default function Focus() {
   const progress = useMemo(()=>minutes ? Math.max(0,Math.min(100,(1-remaining/(minutes*60))*100)) : 0,[minutes,remaining]);
 
   const startFocus = () => {
+    void ensureNotificationPermission();
     if (remaining===0) setRemaining(minutes*60);
     if (focusRunning) {
       setFocusRunning(false); setFocusEnd(0); setVal("end", null);
@@ -118,7 +129,7 @@ export default function Focus() {
         </>}
         {mode==="alarm" && <>
           <div className="alarm-face"><AlarmClock/><input type="time" value={alarmTime} onChange={(e)=>{setAlarmTime(e.target.value);localStorage.setItem(key("alarm-time"),e.target.value);setAlarmArmed(false);setVal("alarm-armed",null);}}/></div>
-          <div className="focus-actions"><button className={alarmArmed?"btn pri":"btn"} onClick={()=>{const next=!alarmArmed;setAlarmArmed(next);setVal("alarm-armed",next?"1":null);}}>{alarmArmed?"Alarm armed":"Set alarm"}</button></div>
+          <div className="focus-actions"><button className={alarmArmed?"btn pri":"btn"} onClick={()=>{void ensureNotificationPermission();const next=!alarmArmed;setAlarmArmed(next);setVal("alarm-armed",next?"1":null);}}>{alarmArmed?"Alarm armed":"Set alarm"}</button></div>
           {snoozedUntil>0&&<p className="mute sm">Snoozed until {new Date(snoozedUntil).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</p>}
         </>}
       </Card>

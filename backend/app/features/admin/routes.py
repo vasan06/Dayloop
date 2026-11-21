@@ -42,11 +42,15 @@ def overview(_: None = Header(default=None, alias="X-Ignored"), x_dayloop_admin_
 def users(x_dayloop_admin_key: str | None = Header(default=None)) -> dict:
     require_admin(x_dayloop_admin_key)
     items = fetch_all(
-        "SELECT u.id,u.email,u.username,u.role,u.created_at,u.last_seen_at,u.admin_disabled,"
-        "(SELECT COUNT(*) FROM tasks t WHERE t.user_id=u.id AND t.deleted_at IS NULL) AS tasks,"
-        "(SELECT COUNT(*) FROM habits h WHERE h.user_id=u.id AND h.archived_at IS NULL) AS habits,"
-        "(SELECT COUNT(*) FROM projects p WHERE p.user_id=u.id AND p.archived_at IS NULL) AS projects,"
-        "(SELECT COUNT(*) FROM note_pages n WHERE n.user_id=u.id AND n.deleted_at IS NULL) AS notes "
+        "SELECT u.id,u.created_at,u.last_seen_at,u.admin_disabled,"
+        "(SELECT COUNT(*) FROM tasks t WHERE t.user_id=u.id) AS tasks_created,"
+        "(SELECT COUNT(*) FROM tasks t WHERE t.user_id=u.id AND t.deleted_at IS NOT NULL) AS tasks_deleted,"
+        "(SELECT COUNT(*) FROM habits h WHERE h.user_id=u.id) AS habits_created,"
+        "(SELECT COUNT(*) FROM habits h WHERE h.user_id=u.id AND h.archived_at IS NOT NULL) AS habits_archived,"
+        "(SELECT COUNT(*) FROM projects p WHERE p.user_id=u.id) AS projects_created,"
+        "(SELECT COUNT(*) FROM projects p WHERE p.user_id=u.id AND p.archived_at IS NOT NULL) AS projects_archived,"
+        "(SELECT COUNT(*) FROM note_pages n WHERE n.user_id=u.id) AS notes_created,"
+        "(SELECT COUNT(*) FROM note_pages n WHERE n.user_id=u.id AND n.deleted_at IS NOT NULL) AS notes_deleted "
         "FROM users u ORDER BY u.created_at DESC LIMIT 250"
     )
     return {"items": items}
@@ -71,7 +75,7 @@ def update_user(user_id: str, payload: dict, x_dayloop_admin_key: str | None = H
         raise HTTPException(status_code=422, detail="No supported user fields supplied.")
     params.append(user_id)
     item = fetch_one(
-        f"UPDATE users SET {','.join(updates)},updated_at=now() WHERE id=%s RETURNING id,email,username,role,admin_disabled,last_seen_at",
+        f"UPDATE users SET {','.join(updates)},updated_at=now() WHERE id=%s RETURNING id,admin_disabled,last_seen_at",
         tuple(params),
     )
     if not item:
@@ -87,8 +91,8 @@ def update_user(user_id: str, payload: dict, x_dayloop_admin_key: str | None = H
 def feedback(x_dayloop_admin_key: str | None = Header(default=None)) -> dict:
     require_admin(x_dayloop_admin_key)
     return {"items": fetch_all(
-        "SELECT f.id,f.message,f.page,f.created_at,u.email,u.username FROM user_feedback f "
-        "JOIN users u ON u.id=f.user_id ORDER BY f.created_at DESC LIMIT 250"
+        "SELECT f.id,f.message,f.page,f.created_at FROM user_feedback f "
+        "ORDER BY f.created_at DESC LIMIT 250"
     )}
 
 
