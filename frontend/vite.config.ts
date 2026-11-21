@@ -19,11 +19,11 @@ export default defineConfig({
     enforce: "post",
     generateBundle(_, bundle) {
       const assets = [...Object.keys(bundle).filter((name) => !name.endsWith(".map")),
-        "dayloop-mark.svg", "manifest.webmanifest"].sort().map((name) => "/" + name);
+        "dayloop-mark.svg", "dayloop-mark.png", "manifest.webmanifest"].sort().map((name) => "/" + name);
       const html = bundle["index.html"];
       const hash = createHash("sha256").update(JSON.stringify(assets));
       if (html?.type === "asset") hash.update(html.source);
-      for (const file of ["dayloop-mark.svg", "manifest.webmanifest"]) {
+      for (const file of ["dayloop-mark.svg", "dayloop-mark.png", "manifest.webmanifest"]) {
         hash.update(readFileSync(new URL("./public/" + file, import.meta.url)));
       }
       const name = "dayloop-shell-" + hash.digest("hex").slice(0, 16);
