@@ -1,18 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, RefreshCw, Smartphone } from "lucide-react";
-import { isNativeMobile, listConflicts, pendingMutations, resolveConflict, type SyncConflict } from "../lib/mobileData";
-import { syncMobileChanges } from "../lib/mobileApi";
+import { getSyncValue, isNativeMobile, listConflicts, pendingMutations, resolveConflict, type SyncConflict } from "../lib/mobileData";
+import { preloadMobileWorkspace, syncMobileChanges } from "../lib/mobileApi";
 
 export default function MobileSyncPanel() {
   const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
   const [pending, setPending] = useState(0);
+  const [bootstrap, setBootstrap] = useState("not started");
+  const [downloaded, setDownloaded] = useState(0);
+  const [missing, setMissing] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<Record<string, string>>({});
   const refresh = useCallback(async () => {
     try {
-      const [items, changes] = await Promise.all([listConflicts(), pendingMutations()]);
+      const [items, changes, status, number, missingText] = await Promise.all([
+        listConflicts(), pendingMutations(), getSyncValue("bootstrap_status"),
+        getSyncValue("bootstrap_downloaded"), getSyncValue("bootstrap_missing"),
+      ]);
       setConflicts(items); setPending(changes.length);
+      setBootstrap(status ?? "not started");
+      setDownloaded(Number(number ?? 0));
+      try { setMissing(JSON.parse(missingText ?? "[]") as string[]); } catch { setMissing([]); }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not read local sync status"); }
   }, []);
   useEffect(() => {
@@ -30,6 +39,12 @@ export default function MobileSyncPanel() {
     setBusy(true); setError("");
     try { await syncMobileChanges(); await refresh(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Sync failed"); }
+    finally { setBusy(false); }
+  }
+  async function importExisting() {
+    setBusy(true); setError("");
+    try { await preloadMobileWorkspace(); await refresh(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Import failed"); }
     finally { setBusy(false); }
   }
   async function decide(id: string, keep: "local" | "remote" | "merged") {
@@ -56,6 +71,9 @@ export default function MobileSyncPanel() {
       <span><CheckCircle2 className="ic" /> {pending} pending change{pending === 1 ? "" : "s"}</span>
       <span><AlertTriangle className="ic" /> {conflicts.length} conflict{conflicts.length === 1 ? "" : "s"}</span>
     </div>
+    <p className="mute sm">PostgreSQL import: {bootstrap}; {downloaded} sections downloaded.{missing.length ? ` ${missing.length} sections need retry.` : ""}</p>
+    <button className="btn sm" disabled={busy} onClick={() => void importExisting()}>Download my existing PC data</button>
+    {missing.length > 0 && <p className="mute sm">Pending sections: {missing.slice(0, 5).join(", ")}{missing.length > 5 ? "…" : ""}</p>}
     {error && <p className="err" role="alert">{error}</p>}
     {conflicts.map((conflict) => <div className="card" key={conflict.op_id} style={{ padding: 14, marginTop: 12 }}>
       <b>Conflict: {conflict.path}</b>

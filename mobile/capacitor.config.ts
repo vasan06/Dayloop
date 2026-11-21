@@ -6,6 +6,12 @@ const config: CapacitorConfig = {
   webDir: "../frontend/dist",
   bundledWebRuntime: false,
   android: { allowMixedContent: false },
+  plugins: {
+    FirebaseAuthentication: {
+      skipNativeAuth: true,
+      providers: ["google.com"],
+    },
+  },
 };
 
 export default config;

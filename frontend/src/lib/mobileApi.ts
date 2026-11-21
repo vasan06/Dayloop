@@ -346,11 +346,19 @@ export function scheduleMobileSync(): () => void {
 }
 export async function preloadMobileWorkspace(): Promise<void> {
   if (!await openMobileWorkspace() || !transporting) return;
-  if ((await pendingMutations()).length) return;
+  // Bootstrap existing PostgreSQL records through authenticated FastAPI.
+  // Never overwrite a section with queued offline changes.
+  let downloaded = 0;
+  const missing: string[] = [];
   for (const path of catalog) {
+    const pending = await pendingMutations();
+    const locallyEdited = pending.some((op) =>
+      op.path === path || op.path.startsWith(path + "/") || path.startsWith(op.path + "/"));
+    if (locallyEdited) continue;
     try {
       const result = await transporting(path);
       await saveResponse(path, result);
+      downloaded++;
       if (path === "/notes" || path === "/trackers" || path === "/habits" || path === "/tasks") {
         const collection = result as { items?: JsonRecord[] };
         for (const item of collection.items ?? []) {
@@ -358,9 +366,15 @@ export async function preloadMobileWorkspace(): Promise<void> {
           if (!id) continue;
           const detail = path === "/notes" ? path + "/" + id :
             path === "/tasks" ? path + "/" + id + "/notes" : path + "/" + id + "/entries";
-          try { await saveResponse(detail, await transporting(detail)); } catch { /* optional detail */ }
+          try { await saveResponse(detail, await transporting(detail)); }
+          catch { missing.push(detail); }
         }
       }
-    } catch { /* optional section */ }
+    } catch { missing.push(path); }
   }
+  await setSyncValue("bootstrap_status", missing.length ? "incomplete" : "complete");
+  await setSyncValue("bootstrap_downloaded", String(downloaded));
+  await setSyncValue("bootstrap_missing", JSON.stringify(missing));
+  await setSyncValue("bootstrap_last_attempt", new Date().toISOString());
+  window.dispatchEvent(new Event("dayloop:mobile-sync"));
 }

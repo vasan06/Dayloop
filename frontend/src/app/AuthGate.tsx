@@ -10,11 +10,12 @@ import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
-  signInWithRedirect,
+  signInWithCredential,
   signOut,
   type User,
 } from "firebase/auth";
 import { apiRequest } from "../lib/api";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { firebaseAuth, firebaseConfigured, firebaseMissingConfig } from "../lib/firebase";
 import { deactivateMobileAccount, isNativeMobile } from "../lib/mobileData";
 import { resetMobileWorkspace } from "../lib/mobileApi";
@@ -246,12 +247,16 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
     setBusy(true);
     try {
       const provider = new GoogleAuthProvider();
-      // Popup is reliable for localhost development, including Chrome device emulation.
-      // Redirect auth can fail in emulated mobile mode because the user-agent reports Android.
-      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-        await signInWithPopup(firebaseAuth, provider);
-      } else if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        await signInWithRedirect(firebaseAuth, provider);
+      if (isNativeMobile) {
+        // A WebView redirect may leave DayLoop blank after the Google chooser.
+        // Use native Google account selection and exchange the resulting ID token
+        // for the SAME Firebase web user used by all DayLoop API requests.
+        const native = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+        const idToken = native.credential?.idToken;
+        if (!idToken) {
+          throw new Error("Google sign-in did not return an ID token. Check Firebase Android app configuration and SHA-1 fingerprint.");
+        }
+        await signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken));
       } else {
         await signInWithPopup(firebaseAuth, provider);
       }
