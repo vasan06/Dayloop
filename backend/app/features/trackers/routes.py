@@ -1,7 +1,11 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one
+
+from app.schemas.inputs import TrackerEntry, TrackerFields
 
 router = APIRouter(prefix="/trackers", tags=["trackers"])
 
@@ -17,7 +21,7 @@ def get_trackers(user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.post("", status_code=201)
-def create_tracker(payload: dict, user: dict = Depends(get_current_user)) -> dict:
+def create_tracker(payload: TrackerFields, user: dict = Depends(get_current_user)) -> dict:
     name = str(payload.get("name", "")).strip()
     metric_type = payload.get("metric_type", "number")
     if not name or metric_type not in {"number", "duration", "boolean"}:
@@ -44,7 +48,7 @@ def create_tracker(payload: dict, user: dict = Depends(get_current_user)) -> dic
 
 
 @router.get("/{tracker_id}/entries")
-def get_entries(tracker_id: str, user: dict = Depends(get_current_user)) -> dict:
+def get_entries(tracker_id: UUID, user: dict = Depends(get_current_user)) -> dict:
     if not fetch_one(
         "SELECT id FROM tracker_definitions WHERE id=%s AND user_id=%s AND archived_at IS NULL",
         (tracker_id, user["id"]),
@@ -59,12 +63,18 @@ def get_entries(tracker_id: str, user: dict = Depends(get_current_user)) -> dict
 
 
 @router.post("/{tracker_id}/entries", status_code=201)
-def add_entry(tracker_id: str, payload: dict, user: dict = Depends(get_current_user)) -> dict:
-    if not fetch_one(
-        "SELECT id FROM tracker_definitions WHERE id=%s AND user_id=%s AND archived_at IS NULL",
+def add_entry(tracker_id: UUID, payload: TrackerEntry, user: dict = Depends(get_current_user)) -> dict:
+    tracker = fetch_one(
+        "SELECT metric_type FROM tracker_definitions WHERE id=%s AND user_id=%s AND archived_at IS NULL",
         (tracker_id, user["id"]),
-    ):
-        raise HTTPException(status_code=404, detail="Tracker not found.")
+    )
+    if not tracker:
+        raise HTTPException(404, "Tracker not found.")
+    value = payload["numeric_value"]
+    if tracker["metric_type"] == "boolean" and value not in (0, 1):
+        raise HTTPException(422, "A yes/no tracker accepts 0 or 1.")
+    if tracker["metric_type"] == "duration" and value < 0:
+        raise HTTPException(422, "Duration cannot be negative.")
     return {
         "item": fetch_one(
             "INSERT INTO tracker_entries (tracker_id,numeric_value,text_value,notes) VALUES (%s,%s,%s,%s) RETURNING *",

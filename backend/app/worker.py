@@ -1,22 +1,31 @@
 import time
 
 from app.core.database import get_connection
+from app.features.habits.reminders import sync_habit_reminder
 
 
 def process_due_notifications(batch_size: int = 50) -> int:
     processed = 0
     with get_connection() as connection:
         jobs = connection.execute(
-            "SELECT id,user_id,title,body,source_type,source_id FROM notification_jobs "
+            "SELECT id,user_id,title,body,source_type,source_id,scheduled_at FROM notification_jobs "
             "WHERE channel='in_app' AND status='pending' AND scheduled_at<=now() "
             "ORDER BY scheduled_at LIMIT %s FOR UPDATE SKIP LOCKED",
             (batch_size,),
         ).fetchall()
         for job in jobs:
+            click_path = {
+                "habit": "/habits",
+                "task": f"/tasks/{job['source_id']}" if job["source_id"] else "/tasks",
+                "event": "/calendar",
+            }.get(job["source_type"], "/")
             notification = connection.execute(
-                "INSERT INTO notifications (user_id,title,body,source_type,source_id) "
-                "VALUES (%s,%s,%s,%s,%s) RETURNING id",
-                (job["user_id"], job["title"], job["body"], job["source_type"], job["source_id"]),
+                "INSERT INTO notifications (user_id,title,body,source_type,source_id,scheduled_at,click_path) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                (
+                    job["user_id"], job["title"], job["body"], job["source_type"],
+                    job["source_id"], job["scheduled_at"], click_path,
+                ),
             ).fetchone()
             connection.execute(
                 "UPDATE notification_jobs SET status='sent',attempt_count=attempt_count+1 WHERE id=%s",
@@ -26,6 +35,14 @@ def process_due_notifications(batch_size: int = 50) -> int:
                 "INSERT INTO notification_deliveries (job_id,status,delivered_at) VALUES (%s,'sent',now())",
                 (job["id"],),
             )
+            if job["source_type"] == "habit" and job["source_id"]:
+                habit = connection.execute(
+                    "SELECT id,name,description,question,timezone,reminder_config "
+                    "FROM habits WHERE id=%s AND user_id=%s AND archived_at IS NULL",
+                    (job["source_id"], job["user_id"]),
+                ).fetchone()
+                if habit:
+                    sync_habit_reminder(connection, job["user_id"], habit)
             if not notification:
                 raise RuntimeError("Notification insert did not return an identifier.")
             processed += 1

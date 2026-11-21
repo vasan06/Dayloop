@@ -1,26 +1,39 @@
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+﻿from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from fastapi import HTTPException
+
+DEFAULT_TIMEZONE = "Asia/Kolkata"
+DAY = timedelta(days=1)
+
+
+def validate_timezone(value: object) -> str:
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        ZoneInfo(value)
+    except (ValueError, ZoneInfoNotFoundError) as error:
+        raise HTTPException(422, "Choose a valid IANA timezone.") from error
+    return value
+
+
+def timezone_for_stored_value(value: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(value or DEFAULT_TIMEZONE)
+    except (ValueError, ZoneInfoNotFoundError):
+        # Older profiles and habits accepted free-form timezone names.
+        return ZoneInfo(DEFAULT_TIMEZONE)
 
 
 def local_today(timezone: str) -> date:
-    try:
-        zone = ZoneInfo(timezone)
-    except Exception:
-        zone = ZoneInfo("Asia/Kolkata")
-    return datetime.now(zone).date()
+    return datetime.now(timezone_for_stored_value(timezone)).date()
 
 
 def habit_is_scheduled(day: date, schedule_type: str, schedule_config: dict) -> bool:
     if schedule_type == "daily":
         return True
-    if schedule_type == "weekly":
-        weekdays = schedule_config.get("weekdays", [])
-        return day.weekday() in weekdays
-    if schedule_type == "custom":
-        weekdays = schedule_config.get("weekdays")
-        if weekdays:
-            return day.weekday() in weekdays
-    return False
+    weekdays = schedule_config.get("weekdays") if isinstance(schedule_config, dict) else None
+    return isinstance(weekdays, list) and day.weekday() in weekdays
 
 
 def measurable_status(value: float | None, target: float | None, target_type: str) -> str:
@@ -33,39 +46,43 @@ def measurable_status(value: float | None, target: float | None, target_type: st
     return "completed" if value >= target else "failed"
 
 
-def calculate_habit_streak(
-    entries: list[dict],
-    schedule_type: str,
-    schedule_config: dict,
-    timezone: str,
-    today: date | None = None,
-) -> dict:
-    current_day = today or local_today(timezone)
-    by_date = {entry["entry_date"]: entry for entry in entries}
-    cursor = current_day
-    length = 0
-    start = None
-    break_date = None
-
-    while cursor >= current_day - timedelta(days=366):
-        if habit_is_scheduled(cursor, schedule_type, schedule_config):
-            entry = by_date.get(cursor)
-            status = entry["status"] if entry else None
+def streak_history(entries: list[dict], schedule_type: str, schedule_config: dict, today: date) -> dict:
+    by_date = {e["entry_date"]: e["status"] for e in entries if e["entry_date"] <= today}
+    current = []
+    previous = []
+    longest = 0
+    last_break = None
+    events = []
+    day = min(by_date, default=today)
+    while day <= today:
+        status = by_date.get(day)
+        if habit_is_scheduled(day, schedule_type, schedule_config):
+            event = None
             if status == "completed":
-                length += 1
-                start = cursor
+                event = "continued" if current else ("resumed" if previous else "started")
+                current.append(day)
+                longest = max(longest, len(current))
             elif status == "skipped":
-                cursor -= timedelta(days=1)
-                continue
-            else:
-                if status in {"failed", "missed"}:
-                    break_date = cursor
-                break
-        cursor -= timedelta(days=1)
+                event = status
+            elif status or day < today:
+                if current:
+                    previous, current = current, []
+                last_break = day
+                if status or (previous and previous[-1] == day - DAY):
+                    event = status or "missed"
+            if event:
+                events.append({"event_type": event, "event_date": day, "streak_length": len(current)})
+        day += DAY
+    return {"current": current, "previous": previous, "longest": longest, "last_break": last_break, "events": events}
 
+
+def calculate_habit_streak(entries: list[dict], schedule_type: str, schedule_config: dict, timezone: str, today: date | None = None) -> dict:
+    today = today or local_today(timezone)
+    history = streak_history(entries, schedule_type, schedule_config, today)
+    current = history["current"]
     return {
-        "current": length,
-        "start": str(start) if start else None,
-        "last_update": str(current_day),
-        "break_date": str(break_date) if break_date else None,
+        "current": len(current),
+        "start": str(current[0]) if current else None,
+        "last_update": str(today),
+        "break_date": str(history["last_break"]) if history["last_break"] else None,
     }

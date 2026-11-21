@@ -1,4 +1,4 @@
-import re
+﻿import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg.errors import UniqueViolation
@@ -31,7 +31,7 @@ def update_profile(payload: dict, user: dict = Depends(get_current_user)) -> dic
     if not 13 <= age <= 120:
         raise HTTPException(status_code=422, detail="Age must be between 13 and 120.")
     if not re.fullmatch(r"[a-z0-9_]{3,24}", username):
-        raise HTTPException(status_code=422, detail="Username must be 3–24 letters, numbers or underscores.")
+        raise HTTPException(status_code=422, detail="Username must be 3ÔÇô24 letters, numbers or underscores.")
     if role not in ALLOWED_ROLES:
         raise HTTPException(status_code=422, detail="Choose a valid role.")
     if not name or len(name) > 80:

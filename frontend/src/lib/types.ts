@@ -68,6 +68,16 @@ export type HabitInsights = {
 export type Notification = { id: string; title: string; body: string; source_type: string | null; source_id: string | null; read_at: string | null; created_at: string; click_path?: string | null };
 
 export type NotePage = { id: string; title: string; icon: string | null; is_favorite: boolean; updated_at: string; created_at: string };
+export type TaskNoteBlock = { type: string; content: { text?: string; [key: string]: unknown } };
+export type Tracker = {
+  id: string;
+  name: string;
+  metric_type: "number" | "duration" | "boolean";
+  frequency: "daily" | "weekly" | "monthly";
+  unit: string | null;
+  target_value: number | null;
+};
+export type TrackerEntry = { id: string; recorded_at: string; numeric_value: number | null; notes: string };
 export type NoteBlock = { id?: string; block_type: string; content: { text?: string }; position?: number };
 
 export type Transaction = {
@@ -99,7 +109,7 @@ export type SavingsGoal = {
   target_date: string | null;
   status: string;
 };
-export type FinanceSummary = { month: string; income: number | string; expenses: number | string; net: number | string };
+export type FinanceSummary = { month: string; currency: string; spending_by_category: { label: string; value: string | number }[]; income: number | string; expenses: number | string; net: number | string };
 
 export type Goal = {
   id: string;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, type SetStateAction } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -24,7 +24,7 @@ import {
 import { useDeleteTask, useProjects, useSaveTaskNotes, useTaskNotes, useTasks, useUpdateTask } from "../hooks/data";
 import { isOverdue } from "../lib/derive";
 import { isoDate, priorityLabel, relative, shortDate, statusLabel, timeOf } from "../lib/format";
-import type { TaskPriority, TaskStatus } from "../lib/types";
+import type { TaskNoteBlock, TaskPriority, TaskStatus } from "../lib/types";
 
 const PRI_CLASS: Record<TaskPriority, string> = { urgent: "hi", high: "hi", normal: "md", low: "lo" };
 
@@ -49,17 +49,18 @@ export default function TaskDetail() {
   const remove = useDeleteTask();
   const taskNotes = useTaskNotes(id ?? null);
   const saveTaskNotes = useSaveTaskNotes();
-  const [taskBlocks, setTaskBlocks] = useState<{ type: string; content: { text: string } }[]>([]);
+  const [draft, setDraft] = useState<{ id: string; blocks: TaskNoteBlock[] } | null>(null);
+  const taskBlocks = draft?.id === id && draft ? draft.blocks : taskNotes.data?.items ?? [];
+  function setTaskBlocks(change: SetStateAction<TaskNoteBlock[]>) {
+    if (!id) return;
+    setDraft((previous) => {
+      const blocks = previous?.id === id ? previous.blocks : taskNotes.data?.items ?? [];
+      return { id, blocks: typeof change === "function" ? change(blocks) : change };
+    });
+  }
 
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  useEffect(() => {
-    if (taskNotes.data?.items) setTaskBlocks(taskNotes.data.items.map((item) => ({
-      type: item.type,
-      content: { text: item.content.text ?? "" },
-    })));
-  }, [taskNotes.data]);
 
   if (tasks.isLoading || projects.isLoading) {
     return (
@@ -222,7 +223,7 @@ export default function TaskDetail() {
 
             <Card className="task-notes-card" style={{ marginBottom: 24 }}>
               <CardHead mono="Task notes" title="Points" />
-              <div className="task-notes-editor">
+              {taskNotes.isError ? <ErrorBox error={taskNotes.error} retry={() => void taskNotes.refetch()} /> : !taskNotes.data ? <Skeleton rows={2} /> : <div className="task-notes-editor">
                 {taskBlocks.map((block, index) => <div className="task-note-block" key={index}>
                   <select aria-label={`Block ${index + 1} type`} value={block.type} onChange={(event) => setTaskBlocks((blocks) => blocks.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value } : item))}>
                     <option value="paragraph">Paragraph</option><option value="heading_1">Heading 1</option><option value="heading_2">Heading 2</option><option value="heading_3">Heading 3</option><option value="bulleted_list">Bullets</option><option value="numbered_list">Numbered list</option><option value="todo">To-do</option><option value="code">Code</option><option value="quote">Quote</option>
@@ -231,14 +232,18 @@ export default function TaskDetail() {
                     const text = event.target.value;
                     const command = text.trim().match(/^\/(heading 1|heading 2|heading 3|bullets|todo|code|quote|text)$/i)?.[1].toLowerCase();
                     const types: Record<string, string> = { "heading 1": "heading_1", "heading 2": "heading_2", "heading 3": "heading_3", bullets: "bulleted_list", todo: "todo", code: "code", quote: "quote", text: "paragraph" };
-                    setTaskBlocks((blocks) => blocks.map((item, itemIndex) => itemIndex === index ? { type: command ? types[command] : item.type, content: { text: command ? "" : text } } : item));
+                    setTaskBlocks((blocks) => blocks.map((item, itemIndex) => itemIndex === index ? { type: command ? types[command] : item.type, content: { ...item.content, text: command ? "" : text } } : item));
                   }} />
                   <button type="button" className="iconbtn" aria-label={`Delete task note block ${index + 1}`} onClick={() => setTaskBlocks((blocks) => blocks.filter((_, itemIndex) => itemIndex !== index))}>×</button>
                 </div>)}
                 {taskBlocks.length === 0 && <button type="button" className="btn ghost" onClick={() => setTaskBlocks([{ type: "paragraph", content: { text: "" } }])}>Add notes</button>}
                 {taskBlocks.length > 0 && <button type="button" className="btn sm ghost" onClick={() => setTaskBlocks((blocks) => [...blocks, { type: "paragraph", content: { text: "" } }])}>+ Add block</button>}
-                <button type="button" className="btn pri sm" disabled={saveTaskNotes.isPending} onClick={() => saveTaskNotes.mutate({ id: task.id, blocks: taskBlocks })}>{saveTaskNotes.isPending ? "Saving…" : "Save notes"}</button>
-              </div>
+                <button type="button" className="btn pri sm" disabled={saveTaskNotes.isPending || draft?.id !== task.id} onClick={() => {
+                  saveTaskNotes.mutate({ id: task.id, blocks: taskBlocks }, {
+                    onSuccess: () => setDraft((current) => current?.blocks === taskBlocks ? null : current),
+                  });
+                }}>{saveTaskNotes.isPending ? "Saving…" : "Save notes"}</button>
+              </div>}
             </Card>
 
             {/* Key Metadata Grid */}

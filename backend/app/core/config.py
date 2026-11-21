@@ -10,8 +10,8 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 @lru_cache(maxsize=1)
 def get_settings() -> dict:
     return {
-        "app_env": os.getenv("DAYLOOP_ENV", "development"),
-        "auth_mode": os.getenv("DAYLOOP_AUTH_MODE", "firebase"),
+        "app_env": os.getenv("DAYLOOP_ENV", "development").strip().lower(),
+        "auth_mode": os.getenv("DAYLOOP_AUTH_MODE", "firebase").strip().lower(),
         "database_url": os.getenv("DATABASE_URL", ""),
         "firebase_project_id": os.getenv("FIREBASE_PROJECT_ID", ""),
         "attachment_root": os.getenv("ATTACHMENT_ROOT", "../storage/attachments"),

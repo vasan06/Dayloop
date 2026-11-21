@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Flame, Plus, Trash2 } from "lucide-react";
-import { Card, CardHead, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Progress, Skeleton, confetti } from "../components/ui";
+import { Card, CardHead, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Progress, Skeleton, confetti, type FieldDef } from "../components/ui";
 import { HabitProgressChart, Heatmap } from "../components/charts";
 import { useCheckHabit, useCreateHabit, useDeleteHabit, useHabitEntries, useHabitInsights, useHabits, useUpdateHabit } from "../hooks/data";
 import { useNewParam } from "../hooks/useNewParam";
@@ -12,6 +12,85 @@ function HabitHistory({ id }: { id: string }) {
   const done = new Set((entries.data ?? []).filter((e) => e.status === "completed").map((e) => e.entry_date.slice(0, 10)));
   const days = Array.from({ length: 35 }, (_, i) => addDays(new Date(), i - 34));
   return <Heatmap cells={days.map((d) => (done.has(isoDate(d)) ? 4 : 0))} startWeekday={days[0].getDay()} tips={days.map((d) => `${d.toLocaleDateString("en", { day: "numeric", month: "short" })}\n${done.has(isoDate(d)) ? "Done" : "—"}`)} />;
+}
+
+const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const parseWeekdays = (value: string) => [...new Set(value.toLowerCase().split(/[\s,]+/).map((token) => WEEKDAYS.indexOf(token.slice(0, 3))).filter((day) => day >= 0))];
+const parseMonthDays = (value: string) => [...new Set(value.split(/[\s,]+/).map(Number).filter((day) => Number.isInteger(day) && day >= 1 && day <= 31))];
+
+function frequencyOf(habit: Habit): string {
+  if (habit.schedule_type === "daily") return "daily";
+  const days = habit.schedule_config?.weekdays ?? [];
+  if (days.join(",") === "0,1,2,3,4") return "weekdays";
+  if (days.join(",") === "5,6") return "weekends";
+  return "custom";
+}
+
+function habitFields(): FieldDef[] {
+  return [
+    { name: "name", label: "Title", required: true, placeholder: "Read, walk, drink water…" },
+    { name: "question", label: "Question", placeholder: "Did you complete it today?", required: true },
+    { name: "description", label: "What it is and why", type: "textarea" },
+    { name: "measurement_type", label: "Type", type: "select", options: [["boolean", "Checklist / Yes–No"], ["quantity", "Measurable"], ["duration", "Measurable duration"], ["text", "Text / note"]], half: true },
+    { name: "unit", label: "Unit", type: "select", options: [["", "None"], ["number", "Number"], ["todo", "Todo list"], ["alphabets", "Alphabets"], ["minutes", "Minutes"], ["pages", "Pages"], ["custom", "Other"]], half: true },
+    { name: "target_value", label: "Target value", type: "number", step: "0.01", min: 0, half: true },
+    { name: "target_type", label: "Target", type: "select", options: [["at_least", "At least"], ["at_most", "At most"]], half: true },
+    { name: "frequency", label: "Frequency", type: "select", options: [["daily", "Every day"], ["weekdays", "Monday–Friday"], ["weekends", "Saturday and Sunday"], ["custom", "Custom weekdays"]], half: true },
+    { name: "custom_weekdays", label: "Custom weekdays", placeholder: "Mon, Wed, Fri", half: true },
+    { name: "reminder", label: "Reminder", type: "select", options: [["none", "None"], ["daily", "Daily"], ["monthly_once", "Monthly once"], ["monthly_twice", "Monthly twice"], ["custom", "Custom weekdays"]], half: true },
+    { name: "reminder_time", label: "Reminder time", type: "time", half: true },
+    { name: "reminder_days", label: "Monthly day(s)", placeholder: "1, 15", half: true },
+    { name: "reminder_weekdays", label: "Reminder weekdays", placeholder: "Tue, Thu", half: true },
+    { name: "daily_note_required", label: "Daily note", type: "select", options: [["no", "Optional"], ["yes", "Required"]], half: true },
+  ];
+}
+
+function habitPayload(v: Record<string, string>) {
+  const customDays = parseWeekdays(v.custom_weekdays || "");
+  const scheduleDays = v.frequency === "weekdays" ? [0, 1, 2, 3, 4] : v.frequency === "weekends" ? [5, 6] : customDays;
+  const scheduleType = v.frequency === "daily" ? "daily" : v.frequency === "custom" ? "custom" : "weekly";
+  const reminder: Record<string, unknown> = { type: v.reminder || "none" };
+  if (v.reminder && v.reminder !== "none") reminder.time = v.reminder_time || "09:00";
+  if (v.reminder === "monthly_once" || v.reminder === "monthly_twice") reminder.days = parseMonthDays(v.reminder_days || "");
+  if (v.reminder === "custom") reminder.weekdays = parseWeekdays(v.reminder_weekdays || "");
+  return {
+    name: v.name.trim(),
+    question: v.question.trim(),
+    description: v.description,
+    measurement_type: v.measurement_type,
+    target_value: v.target_value ? Number(v.target_value) : null,
+    target_type: v.target_type,
+    unit: v.unit || null,
+    schedule_type: scheduleType,
+    schedule_config: scheduleType === "daily" ? {} : { weekdays: scheduleDays },
+    frequency_config: { type: v.frequency, weekdays: scheduleDays },
+    reminder_config: reminder,
+    daily_note_required: v.daily_note_required === "yes",
+  };
+}
+
+function habitInitial(habit: Habit): Record<string, string> {
+  const reminder = habit.reminder_config ?? {};
+  const reminderDays = Array.isArray(reminder.days) ? reminder.days.join(", ") : "";
+  const reminderWeekdays = Array.isArray(reminder.weekdays)
+    ? reminder.weekdays.map((day) => WEEKDAYS[Number(day)]).filter(Boolean).join(", ")
+    : "";
+  return {
+    name: habit.name,
+    question: habit.question,
+    description: habit.description,
+    measurement_type: habit.measurement_type,
+    unit: habit.unit ?? "",
+    target_value: habit.target_value == null ? "" : String(habit.target_value),
+    target_type: habit.target_type,
+    frequency: frequencyOf(habit),
+    custom_weekdays: (habit.schedule_config?.weekdays ?? []).map((day) => WEEKDAYS[day]).filter(Boolean).join(", "),
+    reminder: String(reminder.type ?? "none"),
+    reminder_time: String(reminder.time ?? "09:00"),
+    reminder_days: reminderDays,
+    reminder_weekdays: reminderWeekdays,
+    daily_note_required: habit.daily_note_required ? "yes" : "no",
+  };
 }
 
 export default function Habits() {
@@ -51,51 +130,13 @@ export default function Habits() {
         ))}</div>
       )}
       {isNew && <FormModal title="New habit" busy={create.isPending} onClose={closeNew}
-        fields={[
-          { name: "name", label: "Title", required: true, placeholder: "Read, walk, drink water…" },
-          { name: "question", label: "Question", placeholder: "Did you complete it today?", required: true },
-          { name: "description", label: "What it is and why", type: "textarea" },
-          { name: "measurement_type", label: "Type", type: "select", options: [["boolean", "Checklist / Yes–No"], ["quantity", "Measurable"], ["duration", "Measurable duration"], ["text", "Text / note"]], half: true },
-          { name: "unit", label: "Unit", type: "select", options: [["", "None"], ["number", "Number"], ["todo", "Todo list"], ["alphabets", "Alphabets"], ["minutes", "Minutes"], ["pages", "Pages"], ["custom", "Other"]], half: true },
-          { name: "target_value", label: "Target value", type: "number", step: "0.01", min: 0, half: true },
-          { name: "target_type", label: "Target", type: "select", options: [["at_least", "At least"], ["at_most", "At most"]], half: true },
-          { name: "frequency", label: "Frequency", type: "select", options: [["daily", "Every day"], ["weekdays", "Sunday–Saturday"], ["custom", "Custom"]], half: true },
-          { name: "reminder", label: "Reminder", type: "select", options: [["none", "None"], ["daily", "Daily"], ["monthly_once", "Monthly once"], ["monthly_twice", "Monthly twice"], ["custom", "Custom / range"]], half: true },
-        ]}
-        onSubmit={(v) => create.mutate({
-          name: v.name.trim(),
-          question: v.question.trim(),
-          description: v.description,
-          measurement_type: v.measurement_type,
-          target_value: v.target_value ? Number(v.target_value) : null,
-          target_type: v.target_type,
-          unit: v.unit || null,
-          schedule_type: v.frequency === "daily" ? "daily" : "weekly",
-          schedule_config: v.frequency === "weekdays" ? { weekdays: [0, 1, 2, 3, 4, 5, 6] } : {},
-          frequency_config: { type: v.frequency },
-          reminder_config: { type: v.reminder },
-        }, { onSuccess: closeNew })} />}
+        initial={{ measurement_type: "boolean", target_type: "at_least", frequency: "daily", reminder: "none", reminder_time: "09:00", daily_note_required: "no" }}
+        fields={habitFields()}
+        onSubmit={(v) => create.mutate(habitPayload(v), { onSuccess: closeNew })} />}
       {editing && <FormModal title="Edit habit" submit="Save changes" busy={update.isPending} onClose={() => setEditing(null)}
-        initial={{ name: editing.name, question: editing.question, description: editing.description, measurement_type: editing.measurement_type, unit: editing.unit ?? "", target_value: editing.target_value ? String(editing.target_value) : "", target_type: editing.target_type }}
-        fields={[
-          { name: "name", label: "Title", required: true },
-          { name: "question", label: "Question", required: true },
-          { name: "description", label: "What it is and why", type: "textarea" },
-          { name: "measurement_type", label: "Type", type: "select", options: [["boolean", "Checklist / Yes–No"], ["quantity", "Measurable"], ["duration", "Measurable duration"], ["text", "Text / note"]], half: true },
-          { name: "unit", label: "Unit", type: "text", half: true },
-          { name: "target_value", label: "Target value", type: "number", step: "0.01", min: 0, half: true },
-          { name: "target_type", label: "Target", type: "select", options: [["at_least", "At least"], ["at_most", "At most"]], half: true },
-        ]}
-        onSubmit={(v) => update.mutate({
-          id: editing.id,
-          name: v.name.trim(),
-          question: v.question.trim(),
-          description: v.description,
-          measurement_type: v.measurement_type,
-          unit: v.unit || null,
-          target_value: v.target_value ? Number(v.target_value) : null,
-          target_type: v.target_type,
-        }, { onSuccess: () => setEditing(null) })} />}
+        initial={habitInitial(editing)}
+        fields={habitFields()}
+        onSubmit={(v) => update.mutate({ id: editing.id, ...habitPayload(v) }, { onSuccess: () => setEditing(null) })} />}
       {logging && <FormModal title={`Log ${logging.name}`} busy={check.isPending} onClose={() => setLogging(null)} fields={logging.measurement_type === "text" ? [{ name: "note", label: "What did you do?", type: "textarea", required: true }] : [{ name: "value", label: logging.unit ? `Amount (${logging.unit})` : "Amount", type: "number", step: "0.01", min: 0, required: true }]} onSubmit={(v) => check.mutate({ id: logging.id, status: "completed", value: v.value ? Number(v.value) : null, note: v.note }, { onSuccess: () => { setLogging(null); } })} />}
       {skipping && <FormModal title={`Skip ${skipping.name}`} busy={check.isPending} onClose={() => setSkipping(null)}
         fields={[{ name: "note", label: "Why are you skipping today?", type: "textarea", required: true }]}

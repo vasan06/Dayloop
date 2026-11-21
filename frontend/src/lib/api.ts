@@ -1,6 +1,6 @@
-import { firebaseAuth } from "./firebase";
+import { firebaseAuth, firebaseConfigured } from "./firebase";
 
-const API_BASE = import.meta.env.DEV ? "/api/v1" : (import.meta.env.VITE_API_URL ?? "/api/v1");
+const API_BASE = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, "");
 
 export type ApiErrorBody = {
   detail?: string | Array<{ msg?: string; loc?: Array<string | number> }>;
@@ -24,17 +24,20 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     headers.set("Content-Type", "application/json");
   }
 
-  if (import.meta.env.DEV) {
-    headers.set("X-DayLoop-Dev-User", firebaseAuth?.currentUser?.uid ?? "primary");
-    if (firebaseAuth?.currentUser?.email) headers.set("X-DayLoop-Dev-Email", firebaseAuth.currentUser.email);
-    if (firebaseAuth?.currentUser?.displayName) headers.set("X-DayLoop-Dev-Name", firebaseAuth.currentUser.displayName);
-  } else if (firebaseAuth?.currentUser) {
+  if (import.meta.env.DEV && !firebaseConfigured) {
+    headers.set("X-DayLoop-Dev-User", "primary");
+  }
+  if (firebaseAuth?.currentUser) {
     headers.set("Authorization", "Bearer " + await firebaseAuth.currentUser.getIdToken());
   }
 
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    if (response.status === 401 && firebaseAuth?.currentUser) {
+      headers.set("Authorization", "Bearer " + await firebaseAuth.currentUser.getIdToken(true));
+      response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    }
   } catch (reason) {
     const message = reason instanceof Error ? reason.message : "Network request failed.";
     throw new ApiRequestError(

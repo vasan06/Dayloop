@@ -1,3 +1,4 @@
+import TransactionForm from "../components/TransactionForm";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, ArrowDownLeft, ArrowUpRight, Plus, Search, Trash2, Wallet } from "lucide-react";
@@ -6,19 +7,15 @@ import {
   ConfirmModal,
   Empty,
   ErrorBox,
-  FormModal,
   PageHead,
   Skeleton,
-  type FieldDef,
 } from "../components/ui";
 import {
   useCategories,
-  useCreateCategory,
-  useCreateTransaction,
   useDeleteTransaction,
   useTransactions,
 } from "../hooks/data";
-import { isoDate, money, num, shortDate } from "../lib/format";
+import { money, num, shortDate } from "../lib/format";
 import type { Transaction } from "../lib/types";
 
 type TabType = "all" | "income" | "expense";
@@ -26,8 +23,6 @@ type TabType = "all" | "income" | "expense";
 export default function Transactions() {
   const txs = useTransactions();
   const cats = useCategories();
-  const createTx = useCreateTransaction();
-  const createCat = useCreateCategory();
   const deleteTx = useDeleteTransaction();
 
   const [tab, setTab] = useState<TabType>("all");
@@ -38,6 +33,9 @@ export default function Transactions() {
 
   const categories = cats.data ?? [];
   const allTxs = txs.data ?? [];
+
+  const [currency, setCurrency] = useState("INR");
+  const currencies = [...new Set(["INR", ...allTxs.map((item) => item.currency)])].sort();
 
   const catMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -52,18 +50,20 @@ export default function Transactions() {
     let income = 0;
     let expense = 0;
     for (const t of allTxs) {
-      const val = num(t.amount);
+      if (t.currency !== currency) continue;
+      const val = Math.round(num(t.amount) * 100);
       if (t.transaction_type === "income") income += val;
       else expense += val;
     }
-    return { income, expense, net: income - expense };
-  }, [allTxs]);
+    return { income: income / 100, expense: expense / 100, net: (income - expense) / 100 };
+  }, [allTxs, currency]);
 
   // Filtered list
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return allTxs
       .filter((t) => {
+        if (t.currency !== currency) return false;
         if (tab !== "all" && t.transaction_type !== tab) return false;
         if (selectedCat !== "all" && t.category_id !== selectedCat) return false;
         if (q) {
@@ -77,96 +77,15 @@ export default function Transactions() {
         return true;
       })
       .sort((a, b) => (b.transaction_date ?? "").localeCompare(a.transaction_date ?? ""));
-  }, [allTxs, tab, selectedCat, searchQuery, catMap]);
-
-  const catOptions: [string, string][] = [
-    ["", "None / Uncategorised"],
-    ...categories.map((c) => [c.id, `${c.name} (${c.category_type})`] as [string, string]),
-  ];
-
-  const fields: FieldDef[] = [
-    {
-      name: "transaction_type",
-      label: "Type",
-      type: "select",
-      options: [
-        ["expense", "Expense (−)"],
-        ["income", "Income (+)"],
-      ],
-      half: true,
-      required: true,
-    },
-    {
-      name: "amount",
-      label: "Amount (₹)",
-      type: "number",
-      step: "0.01",
-      min: 0,
-      required: true,
-      half: true,
-    },
-    { name: "description", label: "Description", placeholder: "e.g. Grocery shopping, Freelance payout" },
-    {
-      name: "category_id",
-      label: "Existing Category",
-      type: "select",
-      options: catOptions,
-      half: true,
-    },
-    {
-      name: "new_category",
-      label: "Or New Category",
-      type: "text",
-      placeholder: "e.g. Groceries, Software",
-      half: true,
-    },
-    {
-      name: "transaction_date",
-      label: "Transaction Date",
-      type: "date",
-      half: true,
-      required: true,
-    },
-  ];
-
-  const handleCreateSubmit = async (v: Record<string, string>) => {
-    let categoryId: string | null = v.category_id || null;
-
-    if (v.new_category && v.new_category.trim()) {
-      const catName = v.new_category.trim();
-      const existing = categories.find(
-        (c) => c.name.toLowerCase() === catName.toLowerCase() && c.category_type === v.transaction_type
-      );
-      if (existing) {
-        categoryId = existing.id;
-      } else {
-        const created = (await createCat.mutateAsync({
-          name: catName,
-          category_type: v.transaction_type as "income" | "expense",
-        })) as { item: { id: string } };
-        categoryId = created.item.id;
-      }
-    }
-
-    createTx.mutate(
-      {
-        transaction_type: v.transaction_type,
-        amount: v.amount,
-        description: v.description,
-        transaction_date: v.transaction_date || isoDate(),
-        category_id: categoryId,
-        currency: "INR",
-      },
-      {
-        onSuccess: () => setIsNewOpen(false),
-      }
-    );
-  };
+  }, [allTxs, currency, tab, selectedCat, searchQuery, catMap]);
 
   return (
     <>
 
-      <PageHead title="Transactions" sub={`${allTxs.length} recorded entries`}>
+      <PageHead title="Transactions" sub={`${allTxs.length} recent entries`}>
+        {currencies.length > 1 && <select className="btn" aria-label="Transaction currency" value={currency} onChange={(event) => setCurrency(event.target.value)}>
+          {currencies.map((code) => <option key={code}>{code}</option>)}
+        </select>}
         <button className="btn pri" onClick={() => setIsNewOpen(true)}>
           <Plus className="ic" />
           Add transaction
@@ -180,14 +99,14 @@ export default function Transactions() {
             <div className="mono">Total Income</div>
             <ArrowDownLeft className="ic" style={{ color: "var(--green)" }} />
           </div>
-          <div className="big" style={{ marginTop: 4 }}>{money(totals.income)}</div>
+          <div className="big" style={{ marginTop: 4 }}>{money(totals.income, currency)}</div>
         </Card>
         <Card tone="blush" className="s4">
           <div className="row sb">
             <div className="mono">Total Expenses</div>
             <ArrowUpRight className="ic" style={{ color: "var(--rose)" }} />
           </div>
-          <div className="big" style={{ marginTop: 4 }}>{money(totals.expense)}</div>
+          <div className="big" style={{ marginTop: 4 }}>{money(totals.expense, currency)}</div>
         </Card>
         <Card tone="sky" className="s4">
           <div className="row sb">
@@ -198,7 +117,7 @@ export default function Transactions() {
             className="big"
             style={{ marginTop: 4, color: totals.net >= 0 ? "inherit" : "var(--rose)" }}
           >
-            {money(totals.net)}
+            {money(totals.net, currency)}
           </div>
         </Card>
       </div>
@@ -324,22 +243,7 @@ export default function Transactions() {
         )}
       </Card>
 
-      {/* Add Transaction Form Modal */}
-      {isNewOpen && (
-        <FormModal
-          title="Add transaction"
-          submit="Save transaction"
-          fields={fields}
-          busy={createTx.isPending || createCat.isPending}
-          onClose={() => setIsNewOpen(false)}
-          initial={{
-            transaction_type: "expense",
-            transaction_date: isoDate(),
-            category_id: "",
-          }}
-          onSubmit={(v) => void handleCreateSubmit(v)}
-        />
-      )}
+      {isNewOpen && <TransactionForm currency={currency} onClose={() => setIsNewOpen(false)} />}
 
       {/* Delete Confirmation Modal */}
       {deletingTx && (

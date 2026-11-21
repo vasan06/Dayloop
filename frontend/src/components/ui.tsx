@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { Check, CircleAlert, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import type { ToastDetail } from "../lib/toast";
 
 // Kept in the shared UI barrel so module pages can use the same reference progress treatment.
@@ -20,7 +21,7 @@ export function Seg<T extends string>({ value, options, onChange }: { value: T; 
 }
 
 export function PageHead({ title, sub, children }: { title: string; sub?: string; children?: ReactNode }) {
-  return <div className="ph"><div><h1>{title}</h1>{sub && <p className="mute">{sub}</p>}</div><div className="row wrap">{children}</div></div>;
+  return <div className="ph"><div><h1>{title}</h1>{sub && <p className="mute">{sub}</p>}</div>{children && <div className="row wrap">{children}</div>}</div>;
 }
 
 export function Skeleton({ rows = 3 }: { rows?: number }) {
@@ -43,8 +44,13 @@ export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
+    const app = document.getElementById("root");
+    const wasInert = app?.inert ?? false;
+    if (app) app.inert = true;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
@@ -53,7 +59,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     ) ?? []);
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        closeRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -76,20 +82,22 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     };
 
     window.addEventListener("keydown", onKey);
-    focusable()[0]?.focus();
+    const first = ref.current?.querySelector<HTMLElement>("[data-initial-focus]") ?? focusable()[0];
+    first?.focus();
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
+      if (app) app.inert = wasInert;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
-  }, [onClose]);
-  return (
+  }, []);
+  return createPortal(
     <div className="ov" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref} tabIndex={-1}>
         <div className="row sb" style={{ marginBottom: 14 }}><h2 id={titleId} style={{ fontSize: 18 }}>{title}</h2><button type="button" className="iconbtn" aria-label="Close" onClick={onClose} style={{ width: 34, height: 34 }}><X className="ic" /></button></div>
         {children}
       </div>
-    </div>
+    </div>, document.body
   );
 }
 
@@ -156,7 +164,7 @@ export function Toaster() {
     window.addEventListener("dl-toast", on);
     return () => window.removeEventListener("dl-toast", on);
   }, []);
-  return <div aria-live="polite">{list.map((t, i) => <div key={t.id} className="toast" style={{ bottom: `calc(${24 + i * 54}px + env(safe-area-inset-bottom,0px))` }}>{t.kind === "ok" ? <Check className="ic" /> : <CircleAlert className="ic" style={{ background: "var(--rose)", color: "#fff", borderRadius: "50%", padding: 3 }} />}{t.message}</div>)}</div>;
+  return createPortal(<div className="toast-stack" aria-live="polite">{list.map((t) => <div key={t.id} className={`toast ${t.kind}`}>{t.kind === "ok" ? <Check className="ic" /> : <CircleAlert className="ic" />}{t.message}</div>)}</div>, document.body);
 }
 
 /** Delegated tooltips (data-tip) and card spotlight, mounted once. */
@@ -184,7 +192,7 @@ export function confetti(origin?: HTMLElement | null) {
   const rect = origin?.getBoundingClientRect();
   const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
   const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-  const colors = ["#2B4CFF", "#F29A1F", "#12A366", "#E5484D", "#8B5CF6", "#FFEEB0"];
+  const colors = ["var(--acc)", "var(--amber)", "var(--green)", "var(--rose)", "var(--violet)"];
   for (let i = 0; i < 26; i++) {
     const p = document.createElement("i");
     const angle = Math.random() * Math.PI * 2, dist = 60 + Math.random() * 90;

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,7 +51,7 @@ def get_notifications(unread_only: bool = False, user: dict = Depends(get_curren
     return {
         "items": fetch_all(
             "SELECT id,title,body,source_type,source_id,read_at,created_at FROM notifications "
-            "WHERE user_id=%s" + condition + " ORDER BY created_at DESC LIMIT 100",
+            "WHERE user_id=%s AND dismissed_at IS NULL" + condition + " ORDER BY created_at DESC LIMIT 100",
             (user["id"],),
         )
     }
@@ -90,7 +92,7 @@ def create_reminder(payload: dict, user: dict = Depends(get_current_user)) -> di
 
 
 @router.patch("/{notification_id}/read")
-def mark_read(notification_id: str, user: dict = Depends(get_current_user)) -> dict:
+def mark_read(notification_id: UUID, user: dict = Depends(get_current_user)) -> dict:
     notification = fetch_one(
         "UPDATE notifications SET read_at=COALESCE(read_at,now()) "
         "WHERE id=%s AND user_id=%s RETURNING id,read_at",
@@ -102,7 +104,7 @@ def mark_read(notification_id: str, user: dict = Depends(get_current_user)) -> d
 
 
 @router.patch("/{notification_id}/dismiss")
-def dismiss_notification(notification_id: str, user: dict = Depends(get_current_user)) -> dict:
+def dismiss_notification(notification_id: UUID, user: dict = Depends(get_current_user)) -> dict:
     notification = fetch_one(
         "UPDATE notifications SET dismissed_at=now(),read_at=COALESCE(read_at,now()) "
         "WHERE id=%s AND user_id=%s AND dismissed_at IS NULL "

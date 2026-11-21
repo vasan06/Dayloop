@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Check, Code2, GripVertical, Heading1, Heading2, List, ListOrdered, Plus, Quote, Search, Trash2, Type } from "lucide-react";
 import { Card, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Skeleton } from "../components/ui";
-import { useCreateNote, useDeleteNote, useNote, useNotes, useRenameNote, useSaveBlocks } from "../hooks/data";
+import { keys, useCreateNote, useDeleteNote, useNote, useNotes } from "../hooks/data";
 import { useNewParam } from "../hooks/useNewParam";
 import { shortDate } from "../lib/format";
 import { toast } from "../lib/toast";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { Autosave } from "../lib/autosave";
+import { apiRequest } from "../lib/api";
+import type { NotePage, NoteBlock } from "../lib/types";
 
 type BlockType = "paragraph" | "heading_1" | "heading_2" | "heading_3" | "heading_4" | "bulleted_list" | "numbered_list" | "todo" | "quote" | "callout" | "code" | "toggle" | "divider" | "columns";
-type Draft = { id: string; type: BlockType; text: string; checked?: boolean; details?: string; columns?: [string, string]; expanded?: boolean };
+type Draft = { id: string; type: BlockType; text: string; checked?: boolean; details?: string; columns?: [string, string]; expanded?: boolean; originalType?: string; originalContent?: Record<string, unknown> };
 type Command = { type: BlockType; label: string; description: string; keywords: string; icon: typeof Type };
 
 const COMMANDS: Command[] = [
@@ -28,22 +32,63 @@ const COMMANDS: Command[] = [
   { type: "columns", label: "Columns", description: "Create a two-column content area", keywords: "columns layout", icon: Plus },
 ];
 
-const makeId = () => crypto.randomUUID();
+let nextBlockId = 0;
+const makeId = () => `block-${++nextBlockId}`;
 const asBlockType = (value: string): BlockType => COMMANDS.some((command) => command.type === value) ? value as BlockType : "paragraph";
 const toDrafts = (blocks: { block_type?: string; type?: string; content?: unknown }[]): Draft[] => blocks.map((block) => {
   const content = block.content && typeof block.content === "object" ? block.content as { text?: string; checked?: boolean; details?: string; columns?: [string, string] } : {};
-  return { id: makeId(), type: asBlockType(block.block_type ?? block.type ?? "paragraph"), text: content.text ?? "", checked: Boolean(content.checked), details: content.details ?? "", columns: content.columns ?? ["", ""], expanded: false };
+  const originalType = block.block_type ?? block.type ?? "paragraph";
+  return { id: makeId(), originalType, originalContent: content, type: asBlockType(originalType), text: content.text ?? "", checked: Boolean(content.checked), details: content.details ?? "", columns: content.columns ?? ["", ""], expanded: false };
 });
+
+type NoteDraft = { title: string; blocks: Draft[] };
+const sessions = new WeakMap<QueryClient, Map<string, Autosave<NoteDraft>>>();
+
+function noteAutosave(client: QueryClient, id: string) {
+  let notes = sessions.get(client);
+  if (!notes) {
+    notes = new Map();
+    sessions.set(client, notes);
+  }
+  const existing = notes.get(id);
+  if (existing) return existing;
+
+  const queue = new Autosave<NoteDraft>(async (draft) => {
+    const title = draft.title.trim() || "Untitled";
+    const blocks = draft.blocks.map((block) => ({
+      type: block.originalType ?? block.type,
+      content: {
+        ...block.originalContent, text: block.text,
+        ...(block.type === "todo" ? { checked: Boolean(block.checked) } : {}),
+        ...(block.type === "toggle" ? { details: block.details ?? "" } : {}),
+        ...(block.type === "columns" ? { columns: block.columns ?? ["", ""] } : {}),
+      },
+    }));
+    try {
+      await apiRequest(`/notes/${id}/blocks`, { method: "PUT", body: JSON.stringify({ title, blocks }) });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not save this note.", "error");
+      throw error;
+    }
+    client.setQueryData<{item: NotePage; blocks: NoteBlock[]}>(["note", id], (previous) => previous && ({
+      item: { ...previous.item, title },
+      blocks: blocks.map((block) => ({ block_type: block.type, content: block.content })),
+    }));
+    void client.invalidateQueries({ queryKey: keys.notes });
+  });
+  notes.set(id, queue);
+  return queue;
+}
 
 function Editor({ id }: { id: string }) {
   const note = useNote(id);
-  const save = useSaveBlocks();
-  const rename = useRenameNote();
+  const client = useQueryClient();
+  const queue = useMemo(() => noteAutosave(client, id), [client, id]);
+  const status = useSyncExternalStore(queue.subscribe, queue.getStatus);
   const [title, setTitle] = useState("");
   const [blocks, setBlocks] = useState<Draft[]>([]);
   const loaded = useRef<string | null>(null);
-  const savedTitle = useRef("");
-  const [dirty, setDirty] = useState(false);
+  const edited = useRef(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
@@ -55,17 +100,17 @@ function Editor({ id }: { id: string }) {
   useEffect(() => {
     if (note.data && loaded.current !== id) {
       loaded.current = id;
-      setTitle(note.data.item.title);
-      savedTitle.current = note.data.item.title;
-      setBlocks(toDrafts(note.data.blocks as { block_type?: string; content?: unknown }[]));
-      setDirty(false);
+      setTitle(queue.draft?.title ?? note.data.item.title);
+      setBlocks(queue.draft?.blocks ?? toDrafts(note.data.blocks));
       setActiveMenu(null);
     }
-  }, [note.data, id]);
+  }, [note.data, id, queue]);
 
   useEffect(() => {
     if (focusId.current) {
-      refs.current[focusId.current]?.focus();
+      const target = refs.current[focusId.current];
+      target?.focus();
+      target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       focusId.current = null;
     }
   }, [blocks]);
@@ -75,28 +120,28 @@ function Editor({ id }: { id: string }) {
     return haystack.includes(query.toLowerCase());
   }), [query]);
 
-  const persist = () => {
-    if (!dirty || !note.data) return;
-    if (title.trim() && title.trim() !== savedTitle.current) {
-      savedTitle.current = title.trim();
-      rename.mutate({ id, title: title.trim() });
-    }
-    save.mutate({ id, blocks: blocks.map((block) => ({ type: block.type, content: { text: block.text, ...(block.type === "todo" ? { checked: Boolean(block.checked) } : {}), ...(block.type === "toggle" ? { details: block.details ?? "" } : {}), ...(block.type === "columns" ? { columns: block.columns ?? ["", ""] } : {}) } })) }, {
-      onSuccess: () => { setDirty(false); toast("Note saved"); },
-    });
-  };
+  useLayoutEffect(() => {
+    if (!edited.current) return;
+    edited.current = false;
+    queue.edit({ title, blocks });
+    const timer = window.setTimeout(queue.flush, 800);
+    return () => window.clearTimeout(timer);
+  }, [queue, title, blocks]);
 
   useEffect(() => {
-    if (!dirty || !note.data) return;
-    const timer = window.setTimeout(persist, 1200);
-    return () => window.clearTimeout(timer);
-    // persist intentionally snapshots the latest editor state after the debounce.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, dirty, note.data]);
+    const warnIfUnsaved = (event: BeforeUnloadEvent) => {
+      if (queue.draft !== undefined) event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnIfUnsaved);
+    return () => {
+      window.removeEventListener("beforeunload", warnIfUnsaved);
+      void queue.flush();
+    };
+  }, [queue]);
 
   const updateBlock = (blockId: string, patch: Partial<Draft>) => {
     setBlocks((current) => current.map((block) => block.id === blockId ? { ...block, ...patch } : block));
-    setDirty(true);
+    edited.current = true;
   };
 
   const insertAfter = (blockId: string, type: BlockType = "paragraph") => {
@@ -106,13 +151,13 @@ function Editor({ id }: { id: string }) {
       return [...current.slice(0, index + 1), next, ...current.slice(index + 1)];
     });
     focusId.current = next.id;
-    setDirty(true);
+    edited.current = true;
     return next;
   };
 
   const chooseCommand = (block: Draft, type: BlockType) => {
     const cleaned = block.text.replace(/(^|\s)\/[\w-]*$/, "$1");
-    updateBlock(block.id, { type, text: cleaned.trimStart() });
+    updateBlock(block.id, { type, originalType: undefined, originalContent: undefined, text: cleaned.trimStart() });
     setActiveMenu(null);
     setQuery("");
     setHighlighted(0);
@@ -142,7 +187,7 @@ function Editor({ id }: { id: string }) {
       const [moved] = reordered.splice(index, 1);
       reordered.splice(target, 0, moved);
       setBlocks(reordered);
-      setDirty(true);
+      edited.current = true;
       requestAnimationFrame(() => refs.current[block.id]?.focus());
       return;
     }
@@ -165,7 +210,7 @@ function Editor({ id }: { id: string }) {
       const previous = blocks[index - 1];
       setBlocks((current) => current.filter((item) => item.id !== block.id));
       if (previous) focusId.current = previous.id;
-      setDirty(true);
+      edited.current = true;
     }
   };
 
@@ -174,8 +219,8 @@ function Editor({ id }: { id: string }) {
 
   return (
     <div className="note-editor">
-      <input className="note-title-input" aria-label="Note title" value={title} onChange={(event) => { setTitle(event.target.value); setDirty(true); }} placeholder="Untitled" />
-      <div className="block-editor" onClick={() => { if (!blocks.length) { const first = { id: makeId(), type: "paragraph" as const, text: "" }; setBlocks([first]); focusId.current = first.id; setDirty(true); } }}>
+      <input className="note-title-input" aria-label="Note title" maxLength={240} value={title} onBlur={() => { if (!title.trim()) { setTitle("Untitled"); edited.current = true; } }} onChange={(event) => { setTitle(event.target.value); edited.current = true; }} placeholder="Untitled" />
+      <div className="block-editor" onClick={() => { if (!blocks.length) { const first = { id: makeId(), type: "paragraph" as const, text: "" }; setBlocks([first]); focusId.current = first.id; edited.current = true; } }}>
         {blocks.map((block, index) => {
           const commandMenu = activeMenu === block.id;
           const CommandIcon = COMMANDS.find((command) => command.type === block.type)?.icon ?? Type;
@@ -185,7 +230,7 @@ function Editor({ id }: { id: string }) {
             <div
               className={`editor-block block-${block.type}${dropId === block.id ? " drop-target" : ""}`}
               key={block.id}
-              draggable
+              onDragEnd={() => { setDragId(null); setDropId(null); }}
               onDragStart={(event) => { setDragId(block.id); event.dataTransfer.effectAllowed = "move"; }}
               onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropId(block.id); }}
               onDrop={(event) => {
@@ -197,12 +242,12 @@ function Editor({ id }: { id: string }) {
                 const to = reordered.findIndex((item) => item.id === block.id);
                 reordered.splice(to, 0, moved);
                 setBlocks(reordered);
-                setDirty(true);
+                edited.current = true;
                 setDragId(null);
                 setDropId(null);
               }}
             >
-              <span className="block-grip" role="button" tabIndex={0} aria-label={`Move block ${index + 1}. Use Alt plus arrow keys.`} onKeyDown={(event) => {
+              <span draggable className="block-grip" role="button" tabIndex={0} aria-label={`Move block ${index + 1}. Use Alt plus arrow keys.`} onKeyDown={(event) => {
                 if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
                 event.preventDefault();
                 const target = event.key === "ArrowUp" ? index - 1 : index + 1;
@@ -211,7 +256,7 @@ function Editor({ id }: { id: string }) {
                 const [moved] = reordered.splice(index, 1);
                 reordered.splice(target, 0, moved);
                 setBlocks(reordered);
-                setDirty(true);
+                edited.current = true;
               }}><GripVertical /></span>
               {block.type === "todo" && <input className="block-checkbox" type="checkbox" checked={Boolean(block.checked)} onChange={(event) => updateBlock(block.id, { checked: event.target.checked })} aria-label="Mark to-do complete" />}
               {block.type === "divider" ? <hr /> : (
@@ -235,9 +280,12 @@ function Editor({ id }: { id: string }) {
             </div>
           );
         })}
-        <button type="button" className="add-block-button" onClick={() => { const last = blocks[blocks.length - 1]; if (last) insertAfter(last.id); else { const first = { id: makeId(), type: "paragraph" as const, text: "" }; setBlocks([first]); focusId.current = first.id; setDirty(true); } }}><Plus /> Add a block</button>
+        <button type="button" className="add-block-button" onClick={() => { const last = blocks[blocks.length - 1]; if (last) insertAfter(last.id); else { const first = { id: makeId(), type: "paragraph" as const, text: "" }; setBlocks([first]); focusId.current = first.id; edited.current = true; } }}><Plus /> Add a block</button>
       </div>
-      <div className="row sb sm mute note-savebar"><span>{dirty ? "Changes pending…" : save.isPending ? "Saving…" : "All changes saved"}</span><button className="btn sm" onClick={persist} disabled={save.isPending}>Save now</button></div>
+      <div className="row sb sm mute note-savebar">
+        <span role="status">{status === "error" ? queue.error : status === "saving" ? "Saving…" : status === "pending" ? "Changes pending…" : "All changes saved"}</span>
+        <button className="btn sm" onClick={() => void queue.flush()} disabled={status === "saved" || status === "saving"}>{status === "error" ? "Retry save" : "Save now"}</button>
+      </div>
     </div>
   );
 }
@@ -270,7 +318,7 @@ export default function Notes() {
           {selected ? <><div className="row" style={{ justifyContent: "flex-end", marginBottom: 6 }}><button className="btn sm ghost" onClick={() => setDeleting(true)}><Trash2 className="ic" style={{ width: 14, height: 14 }} />Delete</button></div><Editor key={selected} id={selected} /></> : <Empty title="Select or create a note" hint="Your writing is saved automatically." />}
         </Card>
       </div>
-      {isNew && <FormModal title="New note" busy={create.isPending} onClose={closeNew} fields={[{ name: "title", label: "Title", required: true }]} onSubmit={(value) => create.mutate({ title: value.title.trim() }, { onSuccess: (result) => { closeNew(); select((result as { item: { id: string } }).item.id); } })} />}
+      {isNew && <FormModal title="New note" busy={create.isPending} onClose={closeNew} fields={[{ name: "title", label: "Title", required: true }]} onSubmit={(value) => create.mutate({ title: value.title.trim() }, { onSuccess: (result) => setParams({ open: result.item.id }, { replace: true }) })} />}
       {deleting && selected && <ConfirmModal title="Delete note?" body="This note will be removed." onConfirm={() => { remove.mutate(selected); setParams((current) => { current.delete("open"); return current; }, { replace: true }); }} onClose={() => setDeleting(false)} />}
     </>
   );

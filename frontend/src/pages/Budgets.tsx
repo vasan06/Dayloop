@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Plus } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Plus } from "lucide-react";
 import {
   Card,
   Empty,
@@ -11,13 +10,11 @@ import {
   Skeleton,
   type FieldDef,
 } from "../components/ui";
-import { Gauge } from "../components/charts";
-import { useBudgets, useCreateBudget, useSummary } from "../hooks/data";
+import { useBudgets, useCreateBudget } from "../hooks/data";
 import { isoDate, money, num, shortDate, toneOf } from "../lib/format";
 
 export default function Budgets() {
   const budgets = useBudgets();
-  const summary = useSummary();
   const createBudget = useCreateBudget();
 
   const [isNewOpen, setIsNewOpen] = useState(false);
@@ -29,22 +26,9 @@ export default function Budgets() {
   const monthStart = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
   const monthEnd = isoDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
-  // Overall aggregates
-  const totals = useMemo(() => {
-    let limit = 0;
-    let spent = 0;
-    for (const b of budgetList) {
-      limit += num(b.total_limit);
-      spent += num(b.spent);
-    }
-    const remaining = limit - spent;
-    const pct = limit > 0 ? (spent / limit) * 100 : 0;
-    return { limit, spent, remaining, pct };
-  }, [budgetList]);
-
   const fields: FieldDef[] = [
-    { name: "name", label: "Budget Name", required: true, placeholder: "e.g. Dining & Groceries, Utilities" },
-    { name: "total_limit", label: "Spending Limit (₹)", type: "number", step: "0.01", min: 0, required: true },
+    { name: "name", label: "Budget Name", required: true, placeholder: "e.g. December spending" },
+    { name: "total_limit", label: "Spending Limit (₹)", type: "number", step: "0.01", min: 0.01, required: true },
     {
       name: "period_type",
       label: "Period Type",
@@ -52,8 +36,7 @@ export default function Budgets() {
       options: [
         ["monthly", "Monthly"],
         ["weekly", "Weekly"],
-        ["quarterly", "Quarterly"],
-        ["yearly", "Yearly"],
+        ["custom", "Custom dates"],
       ],
       half: true,
       required: true,
@@ -80,74 +63,12 @@ export default function Budgets() {
   return (
     <>
 
-      <PageHead title="Budgets" sub="Plan spending caps and monitor burn rates">
+      <PageHead title="Budgets" sub="Compare spending with the limit for each date range">
         <button className="btn pri" onClick={() => setIsNewOpen(true)}>
           <Plus className="ic" />
           New budget
         </button>
       </PageHead>
-
-      {/* Hero Overview Gauge Card */}
-      <div className="g" style={{ marginBottom: 20 }}>
-        <Card className="s12" style={{ padding: "24px 28px" }}>
-          <div className="row sb wrap" style={{ gap: 20 }}>
-            <div style={{ flex: "1 1 320px" }}>
-              <div className="mono" style={{ marginBottom: 6 }}>
-                Aggregated Spending Cap · {summary.data?.month ?? "Current Period"}
-              </div>
-              <h2 style={{ fontSize: 26, margin: "0 0 10px" }}>Overall Budget Utilization</h2>
-              <p className="mute" style={{ maxWidth: 480, margin: "0 0 16px" }}>
-                {totals.remaining >= 0
-                  ? `You have ${money(totals.remaining)} remaining across all configured budget envelopes.`
-                  : `Spending has exceeded overall planned caps by ${money(Math.abs(totals.remaining))}.`}
-              </p>
-
-              <div className="row wrap" style={{ gap: 16 }}>
-                <div>
-                  <div className="mono sm mute">Total Cap</div>
-                  <div className="big">{money(totals.limit)}</div>
-                </div>
-                <div style={{ width: 1, background: "var(--line)", height: 38 }} />
-                <div>
-                  <div className="mono sm mute">Total Spent</div>
-                  <div className="big" style={{ color: totals.pct > 100 ? "var(--rose)" : "inherit" }}>
-                    {money(totals.spent)}
-                  </div>
-                </div>
-                <div style={{ width: 1, background: "var(--line)", height: 38 }} />
-                <div>
-                  <div className="mono sm mute">
-                    {totals.remaining >= 0 ? "Remaining" : "Over Budget"}
-                  </div>
-                  <div
-                    className="big"
-                    style={{ color: totals.remaining >= 0 ? "var(--green)" : "var(--rose)" }}
-                  >
-                    {money(Math.abs(totals.remaining))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ minWidth: 200, textAlign: "center" }}>
-              <div style={{ maxWidth: 210, margin: "0 auto" }}>
-                <Gauge value={totals.pct} label="Used" />
-              </div>
-              <div className="mono sm mute" style={{ marginTop: 4 }}>
-                {totals.pct.toFixed(1)}% of planned ceiling
-              </div>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Category-by-Category Budgets Section */}
-      <div className="row sb wrap" style={{ marginBottom: 12 }}>
-        <div>
-          <h2 style={{ fontSize: 18, margin: 0 }}>Category & Envelope Budgets</h2>
-          <div className="mute sm">Individual spending allowances</div>
-        </div>
-      </div>
 
       {budgets.isLoading ? (
         <Card><Skeleton rows={5} /></Card>
@@ -157,7 +78,7 @@ export default function Budgets() {
         <Card>
           <Empty
             title="No budgets created yet"
-            hint="Set a spending cap for groceries, entertainment, rent or shopping."
+            hint="Choose a date range and a limit for all spending in that period."
             action={
               <button className="btn pri sm" onClick={() => setIsNewOpen(true)}>
                 <Plus className="ic" style={{ width: 14, height: 14 }} />

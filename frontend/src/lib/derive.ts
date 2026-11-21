@@ -1,8 +1,8 @@
 import { addDays, dayKey, isoDate, num } from "./format";
-import type { Category, Task, Transaction } from "./types";
+import type { FinanceSummary, Task } from "./types";
 
 export const isOpen = (t: Task): boolean => t.status !== "completed" && t.status !== "cancelled";
-export const isOverdue = (t: Task): boolean => isOpen(t) && Boolean(t.due_at) && new Date(t.due_at as string) < new Date(new Date().setHours(0, 0, 0, 0));
+export const isOverdue = (t: Task): boolean => isOpen(t) && t.due_at !== null && Date.parse(t.due_at) < Date.now();
 export const isToday = (t: Task): boolean => isOpen(t) && dayKey(t.due_at) === isoDate();
 
 /** Task completion percentage per project id. */
@@ -18,15 +18,12 @@ export function projectProgress(tasks: Task[]): Map<string, { done: number; tota
   return map;
 }
 
-export function spendingByCategory(transactions: Transaction[], categories: Category[], month = isoDate().slice(0, 7)) {
-  const names = new Map(categories.map((c) => [c.id, c.name]));
-  const totals = new Map<string, number>();
-  for (const t of transactions) {
-    if (t.transaction_type !== "expense" || !t.transaction_date.startsWith(month)) continue;
-    const key = (t.category_id && names.get(t.category_id)) || "Uncategorised";
-    totals.set(key, (totals.get(key) ?? 0) + num(t.amount));
-  }
-  return [...totals.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+export function spendingByCategory(summary: FinanceSummary | undefined, limit: number) {
+  const entries = (summary?.spending_by_category ?? []).map(({ label, value }) => ({ label, value: num(value) }));
+  if (entries.length <= limit) return entries;
+  const visible = entries.slice(0, limit - 1);
+  const remaining = entries.slice(limit - 1);
+  return [...visible, { label: `Remaining (${remaining.length})`, value: remaining.reduce((sum, item) => sum + item.value, 0) }];
 }
 
 export const PALETTE = ["var(--acc)", "var(--amber)", "var(--green)", "var(--rose)", "var(--violet)", "var(--blue)"];
