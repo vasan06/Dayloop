@@ -166,6 +166,7 @@ export async function mobileRequest<T>(
   transporting = send;
   const method = (init.method ?? "GET").toUpperCase();
   if (method === "GET") {
+    let fetchFailure: unknown = null;
     const pending = await pendingMutations();
     const affected = pending.some((item) => {
       const group = section(item.path);
@@ -178,16 +179,20 @@ export async function mobileRequest<T>(
         await saveResponse(path, remote);
         if (!syncing) void syncMobileChanges().catch(() => {});
         return remote;
-      } catch {
-        // Offline reads return the last durable snapshot rather than an empty screen.
+      } catch (error) {
+        fetchFailure = error;
+        // Preserve the underlying HTTP/network error if this section was never cached.
       }
     }
     const derived = await deriveOffline(path);
     if (derived !== null) return derived as T;
     const cached = await cachedResponse<T>(path);
     if (cached !== null) return cached;
-    // Do not silently return fabricated data if this screen was never downloaded.
-    throw new Error("This workspace section has not been downloaded yet. Connect once to load it.");
+    // A first download must not mask a real network/API configuration error.
+    if (fetchFailure instanceof Error) {
+      throw new Error(`Unable to load ${path}: ${fetchFailure.message}`);
+    }
+    throw new Error(`The ${path} section is not cached on this phone. Connect to your DayLoop backend and open this section once to download it.`);
   }
   if (!endpointFor(path, method)) {
     return send(path, init) as Promise<T>;
