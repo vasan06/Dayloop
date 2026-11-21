@@ -4,6 +4,14 @@
   "description": "Make room for what matters.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ECEDF1",
-  "theme_color": "#2B4CFF"
+  "background_color": "#0F1014",
+  "theme_color": "#2B4CFF",
+  "icons": [
+    {
+      "src": "/dayloop-mark.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }

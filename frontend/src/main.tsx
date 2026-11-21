@@ -30,6 +30,9 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
   });
 }
 
+// Remove the branded spinning startup screen when React is ready to paint.
+requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById("dayloop-launch")?.remove()));
+
 // Retire workers installed by earlier development builds so edits reach the browser.
 if (import.meta.env.DEV && "serviceWorker" in navigator) {
   void navigator.serviceWorker.getRegistration("/").then(async (registration) => {

@@ -1,0 +1,14 @@
+node_modules/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/**/build/
+android/captures/
+*.apk
+*.aab
+.env
+.env.*
+!*.example
+google-services.json
+*.jks
+*.keystore

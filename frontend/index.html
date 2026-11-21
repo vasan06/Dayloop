@@ -9,13 +9,15 @@
     <link rel="icon" href="/dayloop-mark.svg" type="image/svg+xml" />
     <meta property="og:title" content="DayLoop" />
     <meta property="og:description" content="Your tasks, habits, money and notes in one calm workspace." />
-    <meta property="og:image" content="/dayloop-mark.svg" />
+    <meta property="og:image" content="/dayloop-mark.png" />
     <title>DayLoop — Your life, in rhythm</title>
+    <style>#dayloop-launch{position:fixed;inset:0;background:#fff;display:grid;place-items:center;z-index:999999}#dayloop-launch img{animation:dayloop-launch-spin 1.8s linear infinite;transform-origin:center}@keyframes dayloop-launch-spin{to{transform:rotate(360deg)}}</style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <div id="dayloop-launch" aria-label="Loading DayLoop"><img src="/dayloop-mark.svg" alt="" width="88" height="88" /></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

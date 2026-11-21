@@ -1,101 +1,117 @@
 # DayLoop
 
-DayLoop is a personal-first life workspace combining Notion-inspired knowledge management, Todoist-inspired task execution, habit practice, goals, basic finance and everyday planning.
+**DayLoop** is a personal-first productivity and life-management workspace for planning, execution, reflection, and tracking. One React application powers the browser experience and the Capacitor Android build; a Python API owns server-side logic and PostgreSQL persistence.
 
-## Product and engineering principles
-- Personal-first, private by default, designed to support future multi-user workspaces.
-- Python application code uses cohesive `def` / `async def` functions; no authored application classes.
-- PostgreSQL is the only application database. No MongoDB, SQLite or Redis.
-- Free/open-source-first development, local attachment storage and no mandatory paid infrastructure.
-- React function components, responsive layouts and a distinctive cool-grey, cobalt-accent visual identity.
+> Status: actively developed web V1; Android debug-build integration is included. An APK build is **not** a guarantee that every browser integration already works natively.
 
-## Implemented foundation
-- React + TypeScript + Vite frontend, custom design tokens, responsive dashboard and PWA shell caching.
-- FastAPI API with Firebase ID-token verification for production and a local-only development identity.
-- SQL migrations for users, projects, tasks, dependencies, notes/blocks, habits, finance, budgets, savings, goals, trackers, calendar, notifications and attachments.
-- Persistent projects and task CRUD, subtasks, status/priority, project assignment and dependency cycle checks.
-- Notes pages and editable typed blocks.
-- Habit schedules and daily entries.
-- Basic income/expense transactions, categories, monthly budgets and savings goals.
-- Goals, custom trackers and calendar events.
-- PostgreSQL-backed in-app reminder jobs and a separate worker process.
-- Global search across tasks, projects, notes, habits and goals.
-- Private local attachment upload/download/delete with size/type checks and path traversal protection.
-- Firebase email/password and Google sign-in with required profile onboarding in production mode.
+## Product
 
-## Local setup
-1. PostgreSQL 17 is suitable. In pgAdmin Query Tool, connect as a database administrator and run:
-   `CREATE ROLE dayloop LOGIN PASSWORD 'choose-a-local-password';`
-   `CREATE DATABASE dayloop OWNER dayloop;`
-2. Copy root `.env.example` to `.env`. Set `DATABASE_URL` to the password and database created above. Keep `DAYLOOP_AUTH_MODE=development` only for local development.
-3. In Git Bash, create the backend environment once if needed: `cd /d/dayloop/backend`, `python -m venv .venv`, `source .venv/Scripts/activate`, `python -m pip install -r requirements.txt`. Apply migrations deliberately with `python -m app.db.migrate`.
-4. From the repository root, run `npm.cmd run dev` (or `python backend/app.py`). This single command starts FastAPI and Vite together and streams both services' logs in the same terminal. Open `http://127.0.0.1:5173`. Press `Ctrl+C` once to stop both.
-5. Copy `frontend/.env.example` to `frontend/.env` and add your Firebase web app settings to enable email/password and Google sign-in. For local API-only testing, use **Continue with local development identity** on the sign-in page.
-6. Optional in-app reminder worker: in another Git Bash terminal run `cd /d/dayloop/backend`, activate `.venv`, then run `python -m app.worker`.
+| Area | Current experience |
+| --- | --- |
+| Landing and accounts | Public landing, sign-in/sign-up, Firebase email/password and Google web sign-in, account onboarding and profile |
+| Dashboard | Daily overview, shortcuts, progress indicators, activity heatmap |
+| Tasks | Task lists, details, status, priority, subtasks, project assignment and dependencies |
+| Projects | Projects, task organisation, project details and custom banners |
+| Habits | Scheduled habit tracking, check-ins, streaks and activity history |
+| Calendar | Events with completion and deletion actions |
+| Notes | Editable pages and typed knowledge blocks |
+| Focus | Timer, stopwatch and alarm interfaces |
+| Finance | Income and expenses, transactions, categories, budgets and savings goals |
+| Trackers | Custom tracked metrics and progress |
+| Analytics | Progress visualisations and activity heatmaps |
+| Settings | Workspace, appearance and account preferences |
+| Admin | Administration interface (access depends on backend authorization) |
 
-## Production authentication
-- Create a Firebase project on the no-cost Spark plan and enable Email/Password and Google authentication under **Authentication → Sign-in method**.
-- Copy the Firebase web configuration into `frontend/.env.local` using `frontend/.env.example`.
-- Configure `FIREBASE_PROJECT_ID`, `GOOGLE_APPLICATION_CREDENTIALS` and `DAYLOOP_AUTH_MODE=firebase` on the API host.
-- New email and Google accounts complete a DayLoop profile (name, unique username, age and role) before the workspace opens.
-- Never commit service-account credentials or `.env` files. Development identity is disabled when `DAYLOOP_ENV=production`.
+Features should be verified on the intended environment before treating them as production-ready. Some integrations (e.g. alarm delivery while the app is closed, OAuth on embedded WebViews, offline mutation sync) need additional native or backend work.
 
-## Checks
-- Frontend production build: `npm run build`
-- Backend tests (Git Bash): `cd /d/dayloop/backend && .venv/Scripts/python.exe -m pytest -q`
-- Backend syntax (Git Bash): `cd /d/dayloop/backend && .venv/Scripts/python.exe -m compileall -q app tests app.py`
+## Architecture
 
-## Run DayLoop (one terminal)
-
-From the repository root in Git Bash or Windows Terminal:
-
-```bash
-npm.cmd run dev
+```text
+frontend/ ─ React 19, TypeScript, Vite, React Router, TanStack Query
+     │      └─ shared web UI, pages, Firebase web auth, CSS
+     ├─ Browser / PWA
+     └─ mobile/ ─ Capacitor Android shell and GitHub Actions APK
+                     │
+                     ▼
+backend/ ─ Python FastAPI API (Firebase token verification)
+     │
+     ├─ PostgreSQL (application records)
+     ├─ Local attachment storage (configured on API host)
+     └─ Optional PostgreSQL-backed reminder worker
 ```
 
-Equivalent direct command:
+No SQLite, Redis, MongoDB or AWS service is required by the intended architecture. Browser and mobile clients **never connect directly to PostgreSQL**. The backend stays independently running and reachable; packaging an APK does not host the backend.
 
-```bash
-python backend/app.py
+## Repository layout
+
+```text
+frontend/                 React SPA, layouts, routes, feature pages, hooks and styling
+backend/                  FastAPI, migrations, models, services, tests and worker
+mobile/                   Capacitor config, Android build dependencies and mobile guidance
+.github/workflows/        Android debug APK CI
+docs/                     Additional engineering documents
+.env.example              Documented local configuration placeholders (no secrets)
+README.md                 Project and setup documentation
 ```
 
-This starts FastAPI on `http://127.0.0.1:8000` and Vite on `http://127.0.0.1:5173`. Both services' output is streamed into this same terminal with `[frontend]` prefixes for Vite logs. The frontend proxies `/api` requests to FastAPI. Press `Ctrl+C` once to stop both services.
+## Local web development
 
-The launcher checks ports 8000 and 5173 before startup. It only stops an existing process when it can verify that the process is this DayLoop API or this repository's Vite server. If another application owns either port, it leaves that process untouched and reports the conflict.
+Prerequisites: Node.js/npm, Python, PostgreSQL, Git. PostgreSQL 17 is suitable.
 
-Health check (optional, from another terminal):
+1. Create a dedicated PostgreSQL role and database. Use your own strong local password.
+2. Copy `.env.example` to `.env`; configure `DATABASE_URL` and the documented API settings.
+3. Create `backend/.venv`, install `backend/requirements.txt`, and apply the existing SQL migrations using the documented backend migration command.
+4. Copy `frontend/.env.example` to `frontend/.env`, then configure the Firebase **web client** keys if using Firebase.
+5. From the repository root run:
 
 ```bash
-curl -i http://127.0.0.1:8000/api/v1/health
+npm ci
+npm run dev
 ```
 
-Database shell (when needed):
+The launcher (`python backend/app.py`) runs Vite and FastAPI and streams their logs in one terminal. Web UI: `http://127.0.0.1:5173`; API: `http://127.0.0.1:8000`; API docs: `http://127.0.0.1:8000/docs`.
+
+In local-only development you can use the development identity if explicitly enabled. **Never expose a development-auth API to the public internet.**
+
+## Android APK using GitHub Actions
+
+The Android app **reuses every React page and browser route** from `frontend/src`; it does not copy the UI into a second mobile codebase. Capacitor packages the compiled React assets into an Android WebView.
+
+1. Commit and push the `mobile/` directory, updated lockfile, and `.github/workflows/android-apk.yml`.
+2. In GitHub **Settings → Secrets and variables → Actions → Variables**, define `DAYLOOP_API_URL` as a reachable HTTPS URL ending in `/api/v1`. For example: `https://api.example.com/api/v1` (replace with your actual host).
+3. Define the existing Firebase web-client `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` and optional storage/messaging/measurement variables. Do not add service-account JSON, database passwords, or private keys to frontend build variables.
+4. Open **Actions → Android Debug APK → Run workflow** on the branch containing the changes.
+5. Download the `dayloop-android-debug-apk` artifact and install `app-debug.apk` on an Android device after checking Android's installer prompts.
+
+The workflow installs Node and Java, builds the existing Vite SPA, uses the maintained Capacitor Android project (or generates it if absent), synchronizes web assets, compiles with Gradle, and uploads the debug APK. The APK is **not a signed production/Play Store release**; release signing, versioning and a protected release workflow are separate steps.
+
+### Android limitations and prerequisites
+
+- **Backend/database:** Keep your current Python API and PostgreSQL; however, both must be available to the phone through a reachable API endpoint. `localhost` on Android means the Android device, not your PC. Backend CORS must allow the Android WebView origin as appropriate.
+- **Firebase:** Keep the existing Firebase project. Register the Android app with package ID `com.dayloop.app` for native Android Firebase capabilities. Firebase web email/password flows can be reused, but Google sign-in via browser popup/redirect requires a native sign-in path; WebView OAuth is not automatically supported. Register the app's signing certificate fingerprints when Google native sign-in is implemented.
+- **Native behavior:** Browser notifications, push, alarm scheduling when closed, attachment pickers, deep links, back navigation and offline data sync need device verification or Capacitor/native integrations. Do not promise their native behavior solely from a successful APK build.
+- **Configuration:** Android compiled assets must use `VITE_API_URL` pointing to HTTPS. App frontend build settings are publicly extractable from an APK; they must not contain secrets.
+- **Development:** See [mobile/README.md](mobile/README.md) for local Android commands and the native build lifecycle.
+
+## Authentication and data security
+
+Firebase Authentication verifies users in production; FastAPI verifies Firebase ID tokens and authorizes access to application records. Store Firebase Admin credentials and `DATABASE_URL` **only on the API host**. Keep `.env`, service-account JSON, Android keystores and secrets untracked. Client-side Firebase app configuration is not equivalent to backend administrator credentials.
+
+## Validation
+
 ```bash
-psql -U dayloop -h 127.0.0.1 -p 5432 -d dayloop
+npm run build
+npm run typecheck
+cd backend
+.venv/Scripts/python.exe -m pytest -q
 ```
 
-## URLS
-- App: `http://127.0.0.1:5173`
-- Backend API: `http://127.0.0.1:8000`
-- API documentation: `http://127.0.0.1:8000/docs`
-- Backend health: `http://127.0.0.1:8000/api/v1/health`
+For Android, use the GitHub Actions debug build and perform on-device smoke testing of login, API connectivity, main navigation, task CRUD, calendar event completion, notes, finance, habits, and Focus screens.
 
-## Known incomplete areas
-The API and database require PostgreSQL to be running with a configured role/password. Email and browser-push delivery adapters, full offline mutation queue/conflict sync, recurring task scheduler, advanced task timeline/dependency UI, rich note collections/backlinks/revisions, deeper analytics beyond the current progress charts, learning/journal/reviews, data export/backup and full end-to-end/browser/security tests remain to be completed. The PWA service worker currently caches the application shell only; it does not claim full offline data synchronization.
+## Development status / roadmap
 
+The existing React interfaces and API foundation support the product areas above. Still requiring end-to-end validation or expansion: complete offline mutation sync and conflict resolution, push/email adapter delivery, recurring scheduling, enhanced knowledge-management features, extensive browser/mobile accessibility and security tests, native Google authentication, native alarm/background execution, production backend hosting and release signing.
 
-## Frontend (v3 design)
+## License
 
-The UI follows the approved "bento" design: floating collapsible rail, command palette (Ctrl/⌘ K, or `/`), light/dark themes, animated SVG charts.
-
-- Styles: `frontend/src/styles/app.css` (design tokens at the top).
-- Shell, palette, shared UI: `frontend/src/components/`.
-- Pages: `frontend/src/pages/` (Dashboard, Tasks, Projects, Habits, Finance, Notes, Calendar, Analytics, Settings). Landing and auth live in `frontend/src/app/`.
-- Data layer: `frontend/src/hooks/data.ts` (TanStack Query hooks, one per API endpoint).
-
-### New backend endpoints
-
-- `GET /api/v1/insights/overview?days=N` – daily tasks/habits/finance series used by the dashboard and analytics.
-- `DELETE /api/v1/habits/{id}`, `/notes/{id}`, `/calendar/events/{id}`, `/finance/transactions/{id}` – archive / delete / void.
-
-No new migrations are required.
+See [LICENSE](LICENSE).
