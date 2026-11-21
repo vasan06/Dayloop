@@ -19,7 +19,7 @@ export function ProjectDetail({ project, onClose, onEdit }: { project: Project; 
     <Modal title={project.name} onClose={onClose}>
       <p className="mute" style={{ marginTop: 0 }}>{project.description || "No description."}</p>
       <div className="row sb sm mute"><span>{done}/{list.length} tasks done</span><span>{project.due_date ? `Due ${shortDate(project.due_date)}` : "No deadline"}</span></div>
-      <div style={{ margin: "8px 0" }}><Progress value={list.length ? (done / list.length) * 100 : 0} /></div>
+      <div style={{ margin: "8px 0" }}><Progress label={project.name} detail={`${done} of ${list.length} project tasks completed.`} value={list.length ? (done / list.length) * 100 : 0} /></div>
       <div className="list">
         {list.map((t) => <div key={t.id} className={`li ${t.status === "completed" ? "done" : ""}`}><Check22 on={t.status === "completed"} label={`Toggle ${t.title}`} onClick={() => update.mutate({ id: t.id, status: t.status === "completed" ? "not_started" : "completed" })} /><span className="t">{t.title}</span>{t.due_at && <span className="pill">{shortDate(t.due_at)}</span>}</div>)}
         {list.length === 0 && <div className="mute sm" style={{ padding: "8px 0" }}>No tasks in this project yet.</div>}

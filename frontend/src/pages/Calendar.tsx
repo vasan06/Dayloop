@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus, Trash2, ArrowUpRight, ListTodo } from "lucide-react";
-import { Card, Empty, ErrorBox, FormModal, PageHead, Skeleton } from "../components/ui";
-import { useCreateEvent, useDeleteEvent, useEvents, useTasks } from "../hooks/data";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus, Trash2, ArrowUpRight, ListTodo, CircleCheckBig, RotateCcw } from "lucide-react";
+import { Card, Empty, ErrorBox, FormModal, PageHead, Skeleton, confetti } from "../components/ui";
+import { useCreateEvent, useDeleteEvent, useEvents, useTasks, useUpdateEvent } from "../hooks/data";
 import { useNewParam } from "../hooks/useNewParam";
 import { addDays, dayKey, isoDate, shortDate, timeOf } from "../lib/format";
 import { toast } from "../lib/toast";
@@ -27,6 +27,7 @@ export default function Calendar() {
   const tasks = useTasks();
   const create = useCreateEvent();
   const remove = useDeleteEvent();
+  const updateEvent = useUpdateEvent();
   const [isNew, closeNew, showNew] = useNewParam();
   const [selected, setSelected] = useState(isoDate());
   const [view, setView] = useState<CalendarView>(initialView);
@@ -113,7 +114,7 @@ export default function Calendar() {
           <div className="cal-side-head"><div><h3>Day agenda</h3><small>{shortDate(selected+"T12:00:00")}</small></div></div>
           <div className="cal-agenda-totals"><b>{selectedEvents.length+selectedTasks.length}</b><span><strong>planned items</strong><small>{selectedEvents.length} events · {selectedTasks.length} deadlines</small></span></div>
           {selectedEvents.length===0&&selectedTasks.length===0 ? <Empty title="No plans for this day" hint="Events and task deadlines appear here." /> : <div className="cal-agenda-list">
-            {selectedEvents.map(event=><div className="cal-agenda-item" key={event.id}><span className="cal-agenda-rail event" /><div className="cal-agenda-content"><span className="cal-agenda-time"><Clock3 />{timeOf(event.start_at)} – {timeOf(event.end_at)}</span><b>{event.title}</b>{event.description&&<p>{event.description}</p>}</div><button className="iconbtn cal-delete" aria-label={"Delete "+event.title} onClick={()=>remove.mutate(event.id)}><Trash2 className="ic" /></button></div>)}
+            {selectedEvents.map(event=><div className={`cal-agenda-item${event.completed_at?" completed":""}`} key={event.id}><span className="cal-agenda-rail event" /><div className="cal-agenda-content"><span className="cal-agenda-time"><Clock3 />{timeOf(event.start_at)} – {timeOf(event.end_at)}</span><b>{event.title}</b>{event.description&&<p>{event.description}</p>}</div><div className="cal-agenda-actions"><button className={event.completed_at?"iconbtn cal-undo":"iconbtn cal-done"} aria-label={(event.completed_at?"Undo completion for ":"Mark completed ")+event.title} disabled={updateEvent.isPending} onClick={()=>updateEvent.mutate({id:event.id,completed:!event.completed_at},{onSuccess:()=>{if(!event.completed_at)confetti();}})}>{event.completed_at?<RotateCcw className="ic"/>:<CircleCheckBig className="ic"/>}</button><button className="iconbtn cal-delete" aria-label={"Delete "+event.title} onClick={()=>remove.mutate(event.id)}><Trash2 className="ic" /></button></div></div>)}
             {selectedTasks.map(task=><div className="cal-agenda-item" key={task.id}><span className="cal-agenda-rail deadline" /><div className="cal-agenda-content"><span className="cal-agenda-time"><ListTodo />Task deadline</span><b>{task.title}</b></div></div>)}
           </div>}
           <button className="cal-agenda-add" onClick={showNew}><Plus />Add an event to this day</button>

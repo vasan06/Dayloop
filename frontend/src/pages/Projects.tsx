@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
-import { Card, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Progress, Skeleton } from "../components/ui";
-import { useCreateGoal, useCreateProject, useDeleteProject, useGoals, useProjects, useTasks, useUpdateGoal, useUpdateProject } from "../hooks/data";
+import { Card, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Progress, Skeleton, confetti } from "../components/ui";
+import { Goals } from "../components/Goals";
+import { useCreateProject, useDeleteProject, useGoals, useProjects, useTasks, useUpdateProject } from "../hooks/data";
 import { useNewParam } from "../hooks/useNewParam";
 import { projectProgress } from "../lib/derive";
-import { num, shortDate, toneOf } from "../lib/format";
+import { shortDate } from "../lib/format";
 import type { Project } from "../lib/types";
 
 const STATUS: [string, string][] = [["active", "Active"], ["on_hold", "On hold"], ["completed", "Completed"]];
-const BANNERS: [string,string][] = [["aurora","Aurora"],["ocean","Ocean"],["sunset","Sunset"],["forest","Forest"],["violet","Violet"],["graphite","Graphite"],["citrus","Citrus"],["skyline","Skyline"]];
+const BANNERS: [string,string][] = [["aurora","Aurora"],["ocean","Ocean"],["sunset","Sunset"],["forest","Forest"],["violet","Violet"],["graphite","Graphite"],["citrus","Citrus"],["skyline","Skyline"],["coral","Coral"],["indigo","Indigo"],["mint","Mint"],["mono","Mono"],["grid","Grid"],["dots","Dots"],["orbit","Orbit"]];
 
 export default function Projects() {
   const projects = useProjects();
@@ -18,12 +19,10 @@ export default function Projects() {
   const create = useCreateProject();
   const update = useUpdateProject();
   const remove = useDeleteProject();
-  const createGoal = useCreateGoal();
-  const updateGoal = useUpdateGoal();
   const [isNew, closeNew, showNew] = useNewParam();
   const [editing, setEditing] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState<Project | null>(null);
-  const [goalOpen, setGoalOpen] = useState(false);
+  const [goalOpen, closeGoal, showGoal] = useNewParam("goal");
   const [filter, setFilter] = useState("all");
   const progress = useMemo(() => projectProgress(tasks.data ?? []), [tasks.data]);
   const list = (projects.data ?? []).filter((p) => filter === "all" || p.status === filter);
@@ -39,7 +38,7 @@ export default function Projects() {
   return (
     <>
       <PageHead title="Projects" sub={`${projects.data?.length ?? 0} projects · ${goals.data?.length ?? 0} goals`}>
-        <button className="btn" onClick={() => setGoalOpen(true)}>New goal</button>
+        <button className="btn" onClick={showGoal}>New goal</button>
         <button className="btn pri" onClick={showNew}><Plus className="ic" />New project</button>
       </PageHead>
       <div className="tabs">{[["all", "All"], ...STATUS].map(([k, l]) => <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{l}</button>)}</div>
@@ -65,22 +64,11 @@ export default function Projects() {
         })}</div>
       )}
 
-      <Card style={{ marginTop: 14 }}>
-        <div className="hd"><h2>Goals</h2></div>
-        {(goals.data ?? []).length === 0 ? <Empty title="No goals yet" hint="Set a target and track progress toward it." /> : <div className="list">{goals.data!.map((g) => {
-          const target = num(g.target_value); const cur = num(g.current_value); const pct = target ? (cur / target) * 100 : g.status === "completed" ? 100 : 0;
-          return <div key={g.id} className="li" style={{ display: "block" }}>
-            <div className="row sb"><b>{g.title}</b><span className="mono">{target ? `${cur}/${target} ${g.unit ?? ""}` : g.status}</span></div>
-            <Progress value={pct} />
-            {target > 0 && g.status === "active" && <div className="row" style={{ marginTop: 8 }}><button className="btn sm" onClick={() => updateGoal.mutate({ id: g.id, current_value: cur + 1, ...(cur + 1 >= target ? { status: "completed" } : {}) })}>+1 progress</button></div>}
-          </div>;
-        })}</div>}
-      </Card>
+      <Goals creating={goalOpen} closeNew={closeGoal} />
 
-      {isNew && <FormModal title="New project" fields={fields} busy={create.isPending} onClose={closeNew} onSubmit={(v) => create.mutate({ name: v.name.trim(), description: v.description, banner_key: v.banner_key || "aurora", status: v.status as Project["status"], ...(v.due_date ? { due_date: v.due_date } : {}) }, { onSuccess: closeNew })} />}
-      {editing && <FormModal title="Edit project" submit="Save changes" fields={fields} busy={update.isPending} onClose={() => setEditing(null)} initial={{ name: editing.name, description: editing.description, banner_key: editing.banner_key || "aurora", status: editing.status, due_date: editing.due_date?.slice(0, 10) ?? "" }} onSubmit={(v) => update.mutate({ id: editing.id, name: v.name.trim(), description: v.description, banner_key: v.banner_key || "aurora", status: v.status as Project["status"], ...(v.due_date ? { due_date: v.due_date } : {}) }, { onSuccess: () => setEditing(null) })} />}
+      {isNew && <FormModal title="New project" fields={fields} busy={create.isPending} onClose={closeNew} onSubmit={(v) => create.mutate({ name: v.name.trim(), description: v.description, banner_key: v.banner_key || "aurora", status: v.status as Project["status"], ...(v.due_date ? { due_date: v.due_date } : {}) }, { onSuccess: () => { if (v.status === "completed") confetti(); closeNew(); } })} />}
+      {editing && <FormModal title="Edit project" submit="Save changes" fields={fields} busy={update.isPending} onClose={() => setEditing(null)} initial={{ name: editing.name, description: editing.description, banner_key: editing.banner_key || "aurora", status: editing.status, due_date: editing.due_date?.slice(0, 10) ?? "" }} onSubmit={(v) => update.mutate({ id: editing.id, name: v.name.trim(), description: v.description, banner_key: v.banner_key || "aurora", status: v.status as Project["status"], ...(v.due_date ? { due_date: v.due_date } : {}) }, { onSuccess: () => { if (editing.status !== "completed" && v.status === "completed") confetti(); setEditing(null); } })} />}
       {deleting && <ConfirmModal title="Archive project?" body={`“${deleting.name}” will be hidden. Its tasks stay in your task list.`} confirm="Archive" onConfirm={() => remove.mutate(deleting.id)} onClose={() => setDeleting(null)} />}
-      {goalOpen && <FormModal title="New goal" busy={createGoal.isPending} onClose={() => setGoalOpen(false)} fields={[{ name: "title", label: "Goal", required: true }, { name: "goal_type", label: "Type", type: "select", options: ["personal", "learning", "health", "finance", "career"].map((x) => [x, x[0].toUpperCase() + x.slice(1)] as [string, string]), half: true }, { name: "target_date", label: "Target date", type: "date", half: true }, { name: "target_value", label: "Target", type: "number", step: "any", half: true }, { name: "unit", label: "Unit", half: true }]} onSubmit={(v) => createGoal.mutate({ title: v.title.trim(), goal_type: v.goal_type, target_value: v.target_value ? Number(v.target_value) : null, unit: v.unit || null, target_date: v.target_date || null }, { onSuccess: () => setGoalOpen(false) })} />}
     </>
   );
 }

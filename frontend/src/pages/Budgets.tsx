@@ -120,6 +120,8 @@ export default function Budgets() {
                 <div style={{ marginBottom: 8 }}>
                   <Progress
                     value={pct}
+                    label={b.name}
+                    detail={`${money(spent, b.currency)} spent out of ${money(limit, b.currency)} budgeted.`}
                     color={pct > 100 ? "var(--rose)" : pct > 85 ? "var(--amber)" : undefined}
                   />
                 </div>

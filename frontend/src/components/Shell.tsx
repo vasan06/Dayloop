@@ -280,10 +280,29 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
           <button className="profile-identity lab" onClick={() => navigate("/profile")} style={{ minWidth: 0, flex: 1 }}><b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</b><span className="sm" style={{ opacity: 0.7 }}>{profile.data?.username ? `@${profile.data.username}` : "Your profile"}</span></button>
           {profileOpen && createPortal(
             <div ref={profileMenuRef} className="profile-menu profile-menu-portal" role="group" aria-label="Account menu" style={{ left: collapsed ? 78 : 18 }}>
-              <div className="profile-menu-heading"><span className="profile-menu-avatar">{initials(name)}</span><span><b>{name}</b><small>{profile.data?.username ? "@"+profile.data.username : "Personal workspace"}</small></span></div>
-              <button onClick={() => { setProfileOpen(false); navigate("/profile"); }}><UserCircle className="ic" />Profile</button>
-              <button onClick={() => { setProfileOpen(false); navigate("/settings"); }}><Settings className="ic" />Settings</button>
-              <button onClick={() => { setProfileOpen(false); onSignOut(); }}><LogOut className="ic" />Log out</button>
+              <div className="profile-menu-heading">
+                <span className="profile-menu-avatar">{initials(name)}</span>
+                <span className="profile-menu-copy">
+                  <b>{name}</b>
+                  {profile.data?.username && <small>{"@"+profile.data.username}</small>}
+                </span>
+              </div>
+              <div className="profile-menu-actions">
+                <button onClick={() => { setProfileOpen(false); navigate("/profile"); }}>
+                  <span className="profile-menu-action-icon"><UserCircle className="ic" /></span>
+                  <span><b>Profile</b><small>Account and personal details</small></span>
+                </button>
+                <button onClick={() => { setProfileOpen(false); navigate("/settings"); }}>
+                  <span className="profile-menu-action-icon"><Settings className="ic" /></span>
+                  <span><b>Settings</b><small>Appearance and preferences</small></span>
+                </button>
+              </div>
+              <div className="profile-menu-footer">
+                <button className="profile-menu-logout" onClick={() => { setProfileOpen(false); onSignOut(); }}>
+                  <span className="profile-menu-action-icon"><LogOut className="ic" /></span>
+                  <span><b>Log out</b><small>End this session securely</small></span>
+                </button>
+              </div>
             </div>,
             document.body
           )}
@@ -340,7 +359,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
       {streakOpen && <Modal title="Streak history" onClose={() => setStreakOpen(false)}>
           <p>{streak}-day combined streak</p>
           <div className="streak-summary"><div><small>Longest streak</small><b>{streakOverview.data?.longest ?? streak} days</b></div><div><small>Combined update</small><b>{streakOverview.data?.combined.last_update ?? "Today"}</b></div></div>
-          {(streakOverview.data?.habits?.length ?? 0) > 0 && <div className="streak-chart"><b>Individual habit streaks</b><AxisBars labels={(streakOverview.data?.habits ?? []).map((habit) => habit.name)} values={(streakOverview.data?.habits ?? []).map((habit) => habit.current)} color="var(--amber)" height={210} yLabel="Days" xLabel="Habit" /></div>}
+          {(streakOverview.data?.habits?.length ?? 0) > 0 && <div className="streak-chart"><b>Individual habit streaks</b><AxisBars compare={false} labels={(streakOverview.data?.habits ?? []).map((habit) => habit.name)} values={(streakOverview.data?.habits ?? []).map((habit) => habit.current)} color="var(--amber)" height={210} yLabel="Current streak (days)" xLabel="Habit" /></div>}
           <div className="streak-habit-list">
             {(streakOverview.data?.habits ?? []).map((habit) => <div className="streak-habit-row" key={habit.habit_id}><span className="fl"><Flame className="ic" /></span><div><b>{habit.name}</b><small>{habit.current} consecutive days · updated {habit.last_update}</small>{habit.break_date && <small>Last break: {habit.break_date}</small>}</div><strong>{habit.current}</strong></div>)}
             {!streakOverview.data?.habits.length && <div className="streak-empty">Create a habit to start your first streak.</div>}
@@ -373,6 +392,8 @@ function Palette({ onClose }: { onClose: () => void }) {
     ] : []),
     { id: "nt", label: "Create task", hint: "Create", icon: <Plus className="ic" />, run: go("/tasks?new=1") },
     { id: "np", label: "Create project", hint: "Create", icon: <Plus className="ic" />, run: go("/projects?new=1") },
+    { id: "ng", label: "Create goal", hint: "Create", icon: <Plus className="ic" />, run: go("/projects?new=goal") },
+    { id: "ntr", label: "Create tracker", hint: "Create", icon: <Plus className="ic" />, run: go("/trackers?new=1") },
     { id: "nh", label: "Create habit", hint: "Create", icon: <Plus className="ic" />, run: go("/habits?new=1") },
     { id: "nn", label: "Create note", hint: "Create", icon: <Plus className="ic" />, run: go("/notes?new=1") },
     { id: "nf", label: "Add transaction", hint: "Create", icon: <Plus className="ic" />, run: go("/finance?new=1") },

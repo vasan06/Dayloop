@@ -1,0 +1,154 @@
+﻿.plot { display:grid; min-width:0; gap:8px; }
+.plot-legend { display:flex; flex-wrap:wrap; align-items:center; gap:2px 12px; }
+.plot-legend button, .gauge-button, .heat-cell, .plot-detail button {
+  appearance:none; border:0; background:transparent; font:inherit; color:inherit; cursor:pointer;
+}
+.plot-legend button { display:inline-flex; gap:6px; align-items:center; min-height:28px; padding:2px 1px; font-size:12px; text-align:left; }
+.plot-legend button[aria-pressed=true] { font-weight:700; text-decoration:underline; text-underline-offset:3px; }
+.plot-legend i { display:block; flex:none; width:8px; height:8px; border-radius:50%; }
+.plot-legend b { margin-left:auto; font-variant-numeric:tabular-nums; font-size:11px; }
+.plot-detail { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding:8px 0 0; border-top:1px solid currentColor; border-color:color-mix(in srgb,currentColor 18%,transparent); font-size:12px; line-height:1.45; white-space:normal; }
+.plot-detail strong,.plot-detail b,.plot-detail span { display:block; }
+.plot-detail p { margin:3px 0; font-size:inherit; color:inherit; }
+.plot-detail span { opacity:.83; }
+.plot-detail button { flex:none; padding:2px; text-decoration:underline; font-size:11px; }
+.plot-breakdown { display:flex; align-items:center; justify-content:space-around; gap:8px 14px; flex-wrap:wrap; }
+.plot-breakdown .plot-legend { display:grid; gap:0; }
+.plot-breakdown .dn [data-series], .plot-rings [data-series], .plot svg[role=slider], .habit-analytics svg[role=slider] { cursor:pointer; }
+.plot svg[role=slider]:focus-visible, .habit-analytics svg[role=slider]:focus-visible, .heat-cell:focus-visible, .gauge-button:focus-visible, .plot-legend button:focus-visible { outline:2px solid currentColor; outline-offset:-2px; border-radius:4px; }
+.plot-spark { width:100%; }
+.spark-plot { display:block; max-width:100%; }
+.gauge-button { display:block; justify-self:center; max-width:100%; padding:0; }
+.hm .heat-cell { display:grid; min-width:0; min-height:0; padding:0; border-radius:6px; }
+.heat-cell i { width:100%; pointer-events:none; }
+.hm .heat-cell[aria-pressed=true] { outline:2px solid var(--ink); outline-offset:1px; }
+@media (max-width:600px) {
+  .plot .chart.axis-chart text { font-size:11px!important; }
+  .plot-legend button { min-height:32px; }
+}
+.pbar { display:block; }
+.progress-inspect { display:grid; align-content:center; width:100%; min-height:22px; padding:0; appearance:none; border:0; background:transparent; cursor:pointer; color:inherit; text-align:left; }
+.progress-inspect:focus-visible { outline:2px solid currentColor; outline-offset:2px; border-radius:4px; }
+
+
+/* responsive heatmaps and readable analytics plots */
+.plot{width:100%;max-width:100%}
+.plot>div:first-child:has(.hm){width:100%}
+.hm,.hmh{width:100%!important;max-width:none!important;grid-template-columns:repeat(7,minmax(0,1fr))!important}
+.hm .heat-cell{width:100%!important;aspect-ratio:1/1;min-width:0!important}
+.hm .heat-cell>i{width:100%!important;height:100%!important;aspect-ratio:auto!important}
+.axis-chart{width:100%!important;max-height:none!important}
+.metric-trend-card .plot{margin-top:8px}
+.metric-trend-card .plot-legend{margin-bottom:2px}
+.metric-trend-card .axis-chart{min-height:170px!important;max-height:190px!important}
+.metric-trend-card .big{margin-bottom:0}
+
+
+/* Analytics chart spacing */
+.analytics-chart-card>.hd{margin-bottom:14px!important}
+.analytics-chart-card>.plot{padding-top:4px}
+.analytics-chart-card .plot-legend{margin-bottom:10px!important}
+.analytics-chart-card .axis-chart{margin-top:2px}
+.analytics-heat-card>.plot{padding-top:10px}
+.analytics-heat-card .hmh{margin-bottom:10px!important}
+.analytics-heat-card .hm{max-width:360px!important;margin-inline:auto}
+@media(max-width:700px){
+  .analytics-chart-card>.hd{margin-bottom:10px!important}
+  .analytics-heat-card .hm{max-width:320px!important}
+}
+
+
+/* Analytics spacing requested for heatmap + money chart */
+.analytics-heat-card>.hd{margin-bottom:18px!important}
+.analytics-heat-card>.habit-history-panel{
+  margin-top:12px!important;
+  padding:18px!important;
+}
+.analytics-heat-card .hm{
+  max-width:420px!important;
+  margin-inline:auto!important;
+}
+.analytics-heat-card .hmh{
+  max-width:420px!important;
+  margin-inline:auto!important;
+  margin-bottom:12px!important;
+}
+.analytics-money-card>.hd{margin-bottom:16px!important}
+.analytics-money-card>.plot{padding-top:8px!important}
+.analytics-money-card .plot-legend{margin-bottom:24px!important}
+.analytics-money-card .axis-chart{margin-top:0!important}
+@media(max-width:700px){
+  .analytics-heat-card>.habit-history-panel{padding:14px!important}
+  .analytics-heat-card .hm,.analytics-heat-card .hmh{max-width:360px!important}
+  .analytics-money-card .plot-legend{margin-bottom:18px!important}
+}
+
+
+/* final Analytics heatmap + money placement */
+.analytics-heat-card .analytics-heat-wrap{
+  width:100%!important;
+  margin-top:14px!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.analytics-heat-card .hm,.analytics-heat-card .hmh{
+  width:100%!important;
+  max-width:none!important;
+  margin-inline:0!important;
+}
+.analytics-heat-card .hm{min-height:280px}
+.analytics-money-card{display:flex!important;flex-direction:column}
+.analytics-money-card>.plot{
+  flex:1;
+  display:grid!important;
+  grid-template-rows:auto 1fr;
+  align-content:stretch;
+}
+.analytics-money-card .plot-legend{margin-bottom:20px!important}
+.analytics-money-card .axis-chart{
+  height:320px!important;
+  min-height:320px!important;
+  align-self:end!important;
+  margin-top:auto!important;
+}
+
+
+/* analytics heatmap uses the complete card height with even breathing room */
+.analytics-heat-card{
+  display:flex!important;
+  flex-direction:column;
+}
+.analytics-heat-card>.hd{
+  flex:none;
+}
+.analytics-heat-card .analytics-heat-wrap{
+  flex:1;
+  min-height:340px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:8px 0 2px!important;
+}
+.analytics-heat-card .analytics-heat-wrap>.plot{
+  width:100%!important;
+}
+.analytics-heat-card .hm,
+.analytics-heat-card .hmh{
+  width:100%!important;
+  max-width:none!important;
+  margin-inline:0!important;
+  gap:6px!important;
+}
+.analytics-money-card>.plot{
+  flex:1;
+  display:flex!important;
+  flex-direction:column;
+}
+.analytics-money-card .axis-chart{
+  height:340px!important;
+  min-height:340px!important;
+  margin-top:auto!important;
+}

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Activity, BarChart3, History, LogOut, RefreshCw, ShieldCheck, Trash2, Users } from "lucide-react";
 import { Logo } from "../components/Shell";
 import "../styles/admin.css";
+import { AxisBars } from "../components/InteractiveCharts";
+import { shortDate } from "../lib/format";
 
 const API_BASE=(import.meta.env.VITE_API_URL||"/api/v1").replace(/\/+$/,"");
 type Counts={users:number;active_sessions:number;tasks:number;habits:number;projects:number;notes:number;feedback:number};
@@ -28,8 +30,8 @@ async function adminFetch<T>(path:string,key:string,init:RequestInit={}):Promise
 }
 
 function MiniBars({points,field}:{points:Point[];field:"users"|"tasks"}){
-  const max=Math.max(1,...points.map((point)=>Number(point[field]||0)));
-  return <div className="admin-bars">{points.map((point)=><div key={point.day} title={`${point.day}: ${point[field]||0}`}><i style={{height:`${Math.max(4,(Number(point[field]||0)/max)*100)}%`}}/><span>{new Date(point.day).getDate()}</span></div>)}</div>;
+  return <AxisBars labels={points.map(point => shortDate(point.day))} values={points.map(point => point[field] ?? 0)}
+    yLabel={field === "users" ? "Users created" : "Tasks created"} height={170} />;
 }
 
 function MetricPair({created,removed,label}:{created:number;removed:number;label:string}){

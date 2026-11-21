@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, Code2, GripVertical, Heading1, Heading2, List, ListOrdered, Plus, Quote, Search, Trash2, Type } from "lucide-react";
-import { Card, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Skeleton } from "../components/ui";
+import { AlertCircle, BookOpen, Check, ChevronDown, Clock3, Code2, FileText, GripVertical, Heading1, Heading2, List, ListOrdered, Plus, Quote, Search, Trash2, Type, X } from "lucide-react";
+import { ConfirmModal, Empty, ErrorBox, FormModal, Skeleton } from "../components/ui";
 import { keys, useCreateNote, useDeleteNote, useNote, useNotes } from "../hooks/data";
 import { useNewParam } from "../hooks/useNewParam";
 import { shortDate } from "../lib/format";
@@ -10,6 +10,7 @@ import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Autosave } from "../lib/autosave";
 import { apiRequest } from "../lib/api";
 import type { NotePage, NoteBlock } from "../lib/types";
+import "../styles/notes.css";
 
 type BlockType = "paragraph" | "heading_1" | "heading_2" | "heading_3" | "heading_4" | "bulleted_list" | "numbered_list" | "todo" | "quote" | "callout" | "code" | "toggle" | "divider" | "columns";
 type Draft = { id: string; type: BlockType; text: string; checked?: boolean; details?: string; columns?: [string, string]; expanded?: boolean; originalType?: string; originalContent?: Record<string, unknown> };
@@ -80,7 +81,7 @@ function noteAutosave(client: QueryClient, id: string) {
   return queue;
 }
 
-function Editor({ id }: { id: string }) {
+function Editor({ id, onDelete }: { id: string; onDelete: () => void }) {
   const note = useNote(id);
   const client = useQueryClient();
   const queue = useMemo(() => noteAutosave(client, id), [client, id]);
@@ -96,6 +97,38 @@ function Editor({ id }: { id: string }) {
   const [dropId, setDropId] = useState<string | null>(null);
   const refs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const focusId = useRef<string | null>(null);
+  const menuBlock = useRef<HTMLDivElement>(null);
+  const paper = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const element = paper.current;
+    if (!element) return;
+    let width = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      if (width === entry.contentRect.width) return;
+      width = entry.contentRect.width;
+      for (const input of Object.values(refs.current)) {
+        if (!input) continue;
+        input.style.height = "auto";
+        input.style.height = `${input.scrollHeight}px`;
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [note.isLoading, note.isError]);
+
+  useEffect(() => {
+    if (!activeMenu) return;
+    const dismiss = (event: PointerEvent | FocusEvent) => {
+      if (event.target instanceof Node && !menuBlock.current?.contains(event.target)) setActiveMenu(null);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("focusin", dismiss);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("focusin", dismiss);
+    };
+  }, [activeMenu]);
 
   useEffect(() => {
     if (note.data && loaded.current !== id) {
@@ -214,77 +247,102 @@ function Editor({ id }: { id: string }) {
     }
   };
 
-  if (note.isLoading) return <Skeleton rows={6} />;
-  if (note.isError) return <ErrorBox error={note.error} retry={() => void note.refetch()} />;
+  if (note.isLoading) return <div className="notebook-state"><Skeleton rows={6} /></div>;
+  if (note.isError) return <div className="notebook-state"><ErrorBox error={note.error} retry={() => void note.refetch()} /></div>;
+  const StatusIcon = status === "error" ? AlertCircle : status === "saved" ? Check : Clock3;
 
   return (
     <div className="note-editor">
-      <input className="note-title-input" aria-label="Note title" maxLength={240} value={title} onBlur={() => { if (!title.trim()) { setTitle("Untitled"); edited.current = true; } }} onChange={(event) => { setTitle(event.target.value); edited.current = true; }} placeholder="Untitled" />
-      <div className="block-editor" onClick={() => { if (!blocks.length) { const first = { id: makeId(), type: "paragraph" as const, text: "" }; setBlocks([first]); focusId.current = first.id; edited.current = true; } }}>
-        {blocks.map((block, index) => {
-          const commandMenu = activeMenu === block.id;
-          const CommandIcon = COMMANDS.find((command) => command.type === block.type)?.icon ?? Type;
-          const listStart = blocks.slice(0, index).reverse().findIndex((item) => item.type !== "numbered_list");
-          const listNumber = listStart === -1 ? index + 1 : listStart + 1;
-          return (
-            <div
-              className={`editor-block block-${block.type}${dropId === block.id ? " drop-target" : ""}`}
-              key={block.id}
-              onDragEnd={() => { setDragId(null); setDropId(null); }}
-              onDragStart={(event) => { setDragId(block.id); event.dataTransfer.effectAllowed = "move"; }}
-              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropId(block.id); }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (!dragId || dragId === block.id) return;
-                const reordered = [...blocks];
-                const from = reordered.findIndex((item) => item.id === dragId);
-                const [moved] = reordered.splice(from, 1);
-                const to = reordered.findIndex((item) => item.id === block.id);
-                reordered.splice(to, 0, moved);
-                setBlocks(reordered);
-                edited.current = true;
-                setDragId(null);
-                setDropId(null);
-              }}
-            >
-              <span draggable className="block-grip" role="button" tabIndex={0} aria-label={`Move block ${index + 1}. Use Alt plus arrow keys.`} onKeyDown={(event) => {
-                if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
-                event.preventDefault();
-                const target = event.key === "ArrowUp" ? index - 1 : index + 1;
-                if (target < 0 || target >= blocks.length) return;
-                const reordered = [...blocks];
-                const [moved] = reordered.splice(index, 1);
-                reordered.splice(target, 0, moved);
-                setBlocks(reordered);
-                edited.current = true;
-              }}><GripVertical /></span>
-              {block.type === "todo" && <input className="block-checkbox" type="checkbox" checked={Boolean(block.checked)} onChange={(event) => updateBlock(block.id, { checked: event.target.checked })} aria-label="Mark to-do complete" />}
-              {block.type === "divider" ? <hr /> : (
-                <>
-                  {block.type === "toggle" && <button type="button" className="block-type-mark toggle-expander" aria-label={block.expanded ? "Collapse toggle content" : "Expand toggle content"} aria-expanded={Boolean(block.expanded)} onClick={() => updateBlock(block.id, { expanded: !block.expanded })}>▸</button>}
-                  {block.type === "bulleted_list" && <span className="block-list-mark">•</span>}
-                  {block.type === "numbered_list" && <span className="block-list-mark">{listNumber}.</span>}
-                  {block.type === "callout" && <span className="block-type-mark">✦</span>}
-                  {block.type === "columns" ? <div className="block-columns-grid"><textarea rows={3} value={block.columns?.[0] ?? ""} onChange={(event) => updateBlock(block.id, { columns: [event.target.value, block.columns?.[1] ?? ""] })} placeholder="First column" aria-label={`First column, block ${index + 1}`} /><textarea rows={3} value={block.columns?.[1] ?? ""} onChange={(event) => updateBlock(block.id, { columns: [block.columns?.[0] ?? "", event.target.value] })} placeholder="Second column" aria-label={`Second column, block ${index + 1}`} /></div> : <textarea ref={(element) => { refs.current[block.id] = element; if (element) { element.style.height = "auto"; element.style.height = `${element.scrollHeight}px`; } }} rows={1} value={block.text} onChange={(event) => { event.currentTarget.style.height = "auto"; event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`; onBlockChange(block, event.target.value); }} onKeyDown={(event) => onBlockKeyDown(event, block)} placeholder={block.type === "paragraph" ? "Type '/' for commands…" : block.type.replace(/_/g, " ")} className={`block-input ${block.checked ? "is-checked" : ""}`} aria-label={`Note block ${index + 1}`} />}
-                  {block.type === "toggle" && block.expanded && <textarea className="block-input toggle-details" rows={2} value={block.details ?? ""} onChange={(event) => updateBlock(block.id, { details: event.target.value })} placeholder="Hidden toggle content…" aria-label={`Toggle details, block ${index + 1}`} />}
-                </>
-              )}
-              <button className="block-type-button" type="button" title="Change block type" aria-label="Change block type" onClick={() => { setActiveMenu(commandMenu ? null : block.id); setQuery(""); }}><CommandIcon /></button>
-              {commandMenu && <div className="slash-menu" role="listbox" aria-label="Insert a block">
-                <div className="slash-menu-heading">{query ? `Commands matching “${query}”` : "Basic blocks"}</div>
-                {filtered.length ? filtered.map((command, commandIndex) => {
-                  const Icon = command.icon;
-                  return <button key={command.type} type="button" role="option" aria-selected={commandIndex === highlighted} className={commandIndex === highlighted ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(block, command.type)}><Icon /><span><b>{command.label}</b><small>{command.description}</small></span></button>;
-                }) : <p className="slash-no-results">No matching blocks</p>}
-              </div>}
-            </div>
-          );
-        })}
-        <button type="button" className="add-block-button" onClick={() => { const last = blocks[blocks.length - 1]; if (last) insertAfter(last.id); else { const first = { id: makeId(), type: "paragraph" as const, text: "" }; setBlocks([first]); focusId.current = first.id; edited.current = true; } }}><Plus /> Add a block</button>
+      <div className="note-toolbar">
+        <span className="note-save-status" role="status" data-status={status}>
+          <StatusIcon aria-hidden="true" />
+          {status === "error" ? queue.error : status === "saved" ? "All changes saved" : status === "pending" ? "Changes pending" : "Saving…"}
+        </span>
+        {status === "error" && <button className="note-retry" type="button" onClick={() => void queue.flush()}>Retry save</button>}
+        <button className="note-delete" type="button" onClick={onDelete} aria-label="Delete note"><Trash2 aria-hidden="true" />Delete</button>
       </div>
-      <div className="row sb sm mute note-savebar">
-        <span role="status">{status === "error" ? queue.error : status === "saving" ? "Autosaving…" : status === "pending" ? "Autosave queued…" : "All changes saved"}</span>
-        <span className="mono">Saves after 2.5s idle + on page exit</span>
+      <div className="note-paper" ref={paper}>
+        <input className="note-title-input" aria-label="Note title" maxLength={240} value={title} onBlur={() => { if (!title.trim()) { setTitle("Untitled"); edited.current = true; } }} onChange={(event) => { setTitle(event.target.value); edited.current = true; }} placeholder="Untitled" />
+        <div className="note-metadata">
+          {note.data?.item.created_at && <span>Created {shortDate(note.data.item.created_at)}</span>}
+          <span>{blocks.length} {blocks.length === 1 ? "block" : "blocks"}</span>
+        </div>
+        <div className="block-editor">
+          {blocks.length === 0 && (
+            <button className="note-start-writing" type="button" onClick={() => insertAfter("")}>
+              Start writing…
+            </button>
+          )}
+          {blocks.map((block, index) => {
+            const commandMenu = activeMenu === block.id;
+            const CommandIcon = COMMANDS.find((command) => command.type === block.type)?.icon ?? Type;
+            const listStart = blocks.slice(0, index).reverse().findIndex((item) => item.type !== "numbered_list");
+            const listNumber = listStart === -1 ? index + 1 : listStart + 1;
+            return (
+              <div
+                className={`editor-block block-${block.type}${dropId === block.id ? " drop-target" : ""}`}
+                key={block.id}
+                ref={commandMenu ? menuBlock : undefined}
+                onKeyDown={(event) => {
+                  if (!commandMenu || event.key !== "Escape") return;
+                  setActiveMenu(null);
+                  event.currentTarget.querySelector<HTMLButtonElement>(".block-type-button")?.focus();
+                }}
+                onDragEnd={() => { setDragId(null); setDropId(null); }}
+                onDragStart={(event) => { setDragId(block.id); event.dataTransfer.effectAllowed = "move"; }}
+                onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropId(block.id); }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (!dragId || dragId === block.id) return;
+                  const reordered = [...blocks];
+                  const from = reordered.findIndex((item) => item.id === dragId);
+                  const [moved] = reordered.splice(from, 1);
+                  const to = reordered.findIndex((item) => item.id === block.id);
+                  reordered.splice(to, 0, moved);
+                  setBlocks(reordered);
+                  edited.current = true;
+                  setDragId(null);
+                  setDropId(null);
+                }}
+              >
+                <div className="block-line">
+                  <span draggable className="block-grip" role="button" tabIndex={0} aria-label={`Move block ${index + 1}. Use Alt plus arrow keys.`} onKeyDown={(event) => {
+                    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                    event.preventDefault();
+                    const target = event.key === "ArrowUp" ? index - 1 : index + 1;
+                    if (target < 0 || target >= blocks.length) return;
+                    const reordered = [...blocks];
+                    const [moved] = reordered.splice(index, 1);
+                    reordered.splice(target, 0, moved);
+                    setBlocks(reordered);
+                    edited.current = true;
+                  }}><GripVertical /></span>
+                  {block.type === "todo" && <input className="block-checkbox" type="checkbox" checked={Boolean(block.checked)} onChange={(event) => updateBlock(block.id, { checked: event.target.checked })} aria-label="Mark to-do complete" />}
+                  {block.type === "divider" ? <hr /> : (
+                    <>
+                      {block.type === "toggle" && <button type="button" className="block-type-mark toggle-expander" aria-label={block.expanded ? "Collapse toggle content" : "Expand toggle content"} aria-expanded={Boolean(block.expanded)} onClick={() => updateBlock(block.id, { expanded: !block.expanded })}>▸</button>}
+                      {block.type === "bulleted_list" && <span className="block-list-mark">•</span>}
+                      {block.type === "numbered_list" && <span className="block-list-mark">{listNumber}.</span>}
+                      {block.type === "callout" && <span className="block-type-mark">✦</span>}
+                      {block.type === "columns" ? <div className="block-columns-grid"><textarea rows={3} value={block.columns?.[0] ?? ""} onChange={(event) => updateBlock(block.id, { columns: [event.target.value, block.columns?.[1] ?? ""] })} placeholder="First column" aria-label={`First column, block ${index + 1}`} /><textarea rows={3} value={block.columns?.[1] ?? ""} onChange={(event) => updateBlock(block.id, { columns: [block.columns?.[0] ?? "", event.target.value] })} placeholder="Second column" aria-label={`Second column, block ${index + 1}`} /></div> : <textarea ref={(element) => { refs.current[block.id] = element; if (element) { element.style.height = "auto"; element.style.height = `${element.scrollHeight}px`; } }} rows={1} value={block.text} onChange={(event) => { event.currentTarget.style.height = "auto"; event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`; onBlockChange(block, event.target.value); }} onKeyDown={(event) => onBlockKeyDown(event, block)} placeholder={block.type === "paragraph" ? "Type '/' for commands…" : block.type.replace(/_/g, " ")} className={`block-input ${block.checked ? "is-checked" : ""}`} aria-label={`Note block ${index + 1}`} />}
+                    </>
+                  )}
+                  <label className="block-type-select-wrap" title="Change block type live"><CommandIcon /><select className="block-type-select" aria-label={`Change block ${index + 1} type`} value={block.type} onChange={(event) => updateBlock(block.id, { type: event.target.value as BlockType, originalType: undefined, originalContent: undefined })}>{COMMANDS.map((command) => <option key={command.type} value={command.type}>{command.label}</option>)}</select></label>
+                  <button className="block-type-button" type="button" title="Open block commands" aria-label="Open block commands" aria-expanded={commandMenu} aria-haspopup="listbox" onClick={() => { setActiveMenu(commandMenu ? null : block.id); setQuery(""); setHighlighted(0); }}><CommandIcon /></button>
+                </div>
+                {block.type === "toggle" && block.expanded && <textarea className="block-input toggle-details" rows={2} value={block.details ?? ""} onChange={(event) => updateBlock(block.id, { details: event.target.value })} placeholder="Hidden toggle content…" aria-label={`Toggle details, block ${index + 1}`} />}
+                {commandMenu && <div className="slash-menu" role="listbox" aria-label="Insert a block">
+                  <div className="slash-menu-heading">{query ? `Commands matching “${query}”` : "Basic blocks"}</div>
+                  {filtered.length ? filtered.map((command, commandIndex) => {
+                    const Icon = command.icon;
+                    return <button key={command.type} type="button" role="option" aria-selected={commandIndex === highlighted} className={commandIndex === highlighted ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(block, command.type)}><Icon /><span><b>{command.label}</b><small>{command.description}</small></span></button>;
+                  }) : <p className="slash-no-results">No matching blocks</p>}
+                </div>}
+              </div>
+            );
+          })}
+          <button type="button" className="add-block-button" onClick={() => insertAfter(blocks[blocks.length - 1]?.id ?? "")}><Plus />Add a block</button>
+        </div>
       </div>
     </div>
   );
@@ -298,28 +356,60 @@ export default function Notes() {
   const [isNew, closeNew, showNew] = useNewParam();
   const [q, setQ] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   const list = (notes.data ?? []).filter((note) => !q || note.title.toLowerCase().includes(q.toLowerCase()));
-  const selected = params.get("open") ?? list[0]?.id ?? null;
-  const select = (noteId: string) => setParams((current) => { current.set("open", noteId); return current; }, { replace: true });
+  const selected = params.get("open") ?? notes.data?.[0]?.id ?? null;
+  const select = (noteId: string) => {
+    setParams((current) => { current.set("open", noteId); return current; }, { replace: true });
+    setLibraryOpen(false);
+  };
 
   return (
-    <>
-      <PageHead title="Notes" sub={`${notes.data?.length ?? 0} pages · write with structured blocks`}><button className="btn pri" onClick={showNew}><Plus className="ic" />New note</button></PageHead>
-      <div className="g notes-layout">
-        <Card className="s3 notes-list-card">
-          <label className="search2 search"><Search className="ic" /><input placeholder="Search notes" aria-label="Search notes" value={q} onChange={(event) => setQ(event.target.value)} /></label>
-          {notes.isLoading ? <Skeleton /> : notes.isError ? <ErrorBox error={notes.error} retry={() => void notes.refetch()} /> : list.length === 0 ? <Empty title="No notes" hint="Capture ideas, meeting notes, anything." /> : <div className="list">{list.map((note) => (
-            <button key={note.id} className="li" onClick={() => select(note.id)} style={{ border: 0, background: note.id === selected ? "var(--acc-soft)" : undefined, cursor: "pointer", textAlign: "left" }}>
-              <div className="t"><b>{note.title}</b><div className="mono">{shortDate(note.updated_at)}</div></div>
+    <div className="notes-workspace">
+      <header className="notes-workspace-head">
+        <div><span className="mono">KNOWLEDGE SPACE</span><h1>Notes</h1><p>Capture ideas, structure plans, and keep long-form thinking in one place.</p></div>
+        <div className="notes-head-actions"><span>{notes.data?.length ?? 0} pages</span><button className="btn pri" onClick={showNew}><Plus className="ic" />New note</button></div>
+      </header>
+      <div className="notebook">
+        <aside className="notebook-index" aria-label="Note library">
+          <div className="notebook-index-head">
+            <h2><BookOpen aria-hidden="true" />Library</h2>
+            {notes.data && <span className="notebook-count">{notes.data.length} {notes.data.length === 1 ? "note" : "notes"}</span>}
+            <button className="notebook-library-toggle" type="button" aria-expanded={libraryOpen} aria-controls="note-library-list" onClick={() => setLibraryOpen(!libraryOpen)}>
+              {libraryOpen ? "Close library" : "Browse notes"}<ChevronDown aria-hidden="true" />
             </button>
-          ))}</div>}
-        </Card>
-        <Card className="s9 notes-editor-card">
-          {selected ? <><div className="row" style={{ justifyContent: "flex-end", marginBottom: 6 }}><button className="btn sm ghost" onClick={() => setDeleting(true)}><Trash2 className="ic" style={{ width: 14, height: 14 }} />Delete</button></div><Editor key={selected} id={selected} /></> : <Empty title="Select or create a note" hint="Your writing is saved automatically." />}
-        </Card>
+          </div>
+          <div id="note-library-list" className={`notebook-library${libraryOpen ? " is-open" : ""}`}>
+            <div className="notebook-search">
+              <Search aria-hidden="true" />
+              <input ref={searchRef} placeholder="Search notes" aria-label="Search notes" value={q} onChange={(event) => setQ(event.target.value)} />
+              {q && <button type="button" aria-label="Clear search" onClick={() => { setQ(""); searchRef.current?.focus(); }}><X aria-hidden="true" /></button>}
+            </div>
+            {notes.isLoading ? <Skeleton /> : notes.isError ? <ErrorBox error={notes.error} retry={() => void notes.refetch()} /> : list.length === 0 ? (
+              <p className="notebook-index-empty" role="status">{q ? "No matching notes." : "No notes yet."}</p>
+            ) : <nav aria-label="Notes" className="notebook-pages">{list.map((note) => (
+              <button key={note.id} type="button" className="notebook-link" aria-current={note.id === selected ? "page" : undefined} onClick={() => select(note.id)}>
+                <FileText aria-hidden="true" />
+                <span><strong>{note.title}</strong><small>Edited {shortDate(note.updated_at)}</small></span>
+              </button>
+            ))}</nav>}
+          </div>
+        </aside>
+        <section className="notebook-document" aria-label="Note editor">
+          {selected ? <Editor key={selected} id={selected} onDelete={() => setDeleting(true)} /> : notes.isLoading ? <div className="notebook-state"><Skeleton /></div> : notes.isError ? (
+            <div className="notebook-state"><ErrorBox error={notes.error} retry={() => void notes.refetch()} /></div>
+          ) : <Empty title="Create your first note" hint="Use text, lists and other blocks to build your page." action={<button className="btn" onClick={showNew}><Plus className="ic" />New note</button>} />}
+        </section>
       </div>
-      {isNew && <FormModal title="New note" busy={create.isPending} onClose={closeNew} fields={[{ name: "title", label: "Title", required: true }]} onSubmit={(value) => create.mutate({ title: value.title.trim() }, { onSuccess: (result) => setParams({ open: result.item.id }, { replace: true }) })} />}
-      {deleting && selected && <ConfirmModal title="Delete note?" body="This note will be removed." onConfirm={() => { remove.mutate(selected); setParams((current) => { current.delete("open"); return current; }, { replace: true }); }} onClose={() => setDeleting(false)} />}
-    </>
+      {isNew && <FormModal title="New note" busy={create.isPending} onClose={closeNew} fields={[{ name: "title", label: "Title", required: true }]} onSubmit={(value) => create.mutate({ title: value.title.trim() }, { onSuccess: (result) => {
+        setQ("");
+        setLibraryOpen(false);
+        setParams({ open: result.item.id }, { replace: true });
+      } })} />}
+      {deleting && selected && <ConfirmModal title="Delete note?" body="This note and its blocks will be removed." onConfirm={() => remove.mutate(selected, { onSuccess: () => {
+        setParams((current) => { if (current.get("open") === selected) current.delete("open"); return current; }, { replace: true });
+      } })} onClose={() => setDeleting(false)} />}
+    </div>
   );
 }

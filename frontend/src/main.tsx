@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./app/App";
 import "./styles/app.css";
 import "./styles/quality.css";
+import "./styles/dashboard-polish.css";
 
 try {
   const root = document.documentElement;

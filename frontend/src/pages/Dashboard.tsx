@@ -3,9 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowUpRight, CalendarDays, Flame, Sparkles } from "lucide-react";
 import { Card, CardHead, Check22, Empty, Seg, Skeleton, confetti, useCountUp } from "../components/ui";
 import { Bars, Donut, Gauge, Heatmap, LineChart, Progress, Rings, Spark } from "../components/charts";
-import { PALETTE, isOpen, isOverdue, isToday, projectProgress, spendingByCategory } from "../lib/derive";
+import { includesRecord, largestTransaction, PALETTE, isOpen, isOverdue, isToday, projectProgress, spendingByCategory } from "../lib/derive";
 import { useEvents, useHabits, useInsights, useProfile, useProjects, useSummary, useTasks, useTransactions, useUpdateTask } from "../hooks/data";
-import { addDays, greeting, isoDate, money, num, shortDate, timeOf } from "../lib/format";
+import { addDays, compact, greeting, isoDate, money, num, shortDate, timeOf } from "../lib/format";
 import { toast } from "../lib/toast";
 
 function Count({ value, money: asMoney }: { value: number; money?: boolean }) {
@@ -39,8 +39,8 @@ export default function Dashboard() {
   const labels = windowed.map((d) => new Date(d.day + "T00:00").toLocaleDateString("en", { day: "numeric", month: range === "7" ? undefined : "short", weekday: range === "7" ? "short" : undefined }));
   const week = series.slice(-7);
   const previousWeek = series.slice(-14, -7);
-  const fourWeeksEarlier = series.slice(-28, -21);
-  const periodTotal = (days: typeof series, key: "tasks_completed" | "habits_done" | "income" | "expenses") =>
+  const fourWeeksEarlier = series.slice(-35, -28);
+  const periodTotal = (days: typeof series, key: "tasks_completed" | "tasks_created" | "habits_done" | "income" | "expenses") =>
     days.reduce((total, day) => total + num(day[key]), 0);
   const percentChange = (current: number, previous: number, hasPrevious: boolean) => {
     if (!hasPrevious) return "—";
@@ -62,11 +62,18 @@ export default function Dashboard() {
       current: metric.format(current),
       previous: previousWeek.length === 7 ? metric.format(previous) : "—",
       earlier: fourWeeksEarlier.length === 7 ? metric.format(earlier) : "—",
-      spark: [earlier, previous, current],
+      spark: [
+        ...(fourWeeksEarlier.length === 7 ? [{ label: "4 weeks earlier", value: earlier }] : []),
+        ...(previousWeek.length === 7 ? [{ label: "Previous 7 days", value: previous }] : []),
+        ...(week.length ? [{ label: "Last 7 days", value: current }] : []),
+      ],
+      format: metric.format,
       change: percentChange(current, previous, previousWeek.length === 7),
     };
   });
-  const gauge = dueTodayTotal ? (doneToday / dueTodayTotal) * 100 : open.length ? 0 : 100;
+  const gauge = dueTodayTotal ? (doneToday / dueTodayTotal) * 100 : 0;
+  const weekDone = periodTotal(week, "tasks_completed");
+  const weekCreated = periodTotal(week, "tasks_created");
   const net = num(summary.data?.net);
   const progress = useMemo(() => projectProgress(t), [t]);
   const spend = spendingByCategory(summary.data, 5);
@@ -82,7 +89,7 @@ export default function Dashboard() {
   }, [series, h.length]);
 
   const loading = tasks.isLoading || habits.isLoading || insights.isLoading;
-  const toggle = (id: string, done: boolean, el: HTMLElement) => { update.mutate({ id, status: done ? "not_started" : "completed" }); if (!done) confetti(el); };
+  const toggle = (id: string, done: boolean, el: HTMLElement) => { update.mutate({ id, status: done ? "not_started" : "completed" }, { onSuccess: () => { if (!done) confetti(el); } }); };
 
   return (
     <div className="g dashboard-page">
@@ -98,8 +105,11 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="glass rg">
-          <Rings rings={[{ value: gauge, color: "var(--acc)", label: "Today's tasks" }, { value: h.length ? (habitsDone / h.length) * 100 : 0, color: "var(--amber)", label: "Habits" }, { value: week.length ? Math.min(100, (week.reduce((a, d) => a + d.tasks_completed, 0) / Math.max(1, week.reduce((a, d) => a + d.tasks_created, 0))) * 100) : 0, color: "var(--green)", label: "Week flow" }]} />
-          <ul><li><i style={{ background: "var(--acc)" }} />Tasks</li><li><i style={{ background: "var(--amber)" }} />Habits</li><li><i style={{ background: "var(--green)" }} />Week</li></ul>
+          <Rings rings={[
+            { value: gauge, color: "var(--acc)", label: "Tasks", detail: `${doneToday} of ${dueTodayTotal} tasks done today.` },
+            { value: h.length ? habitsDone / h.length * 100 : 0, color: "var(--amber)", label: "Habits", detail: `${habitsDone} of ${h.length} habits completed today.` },
+            { value: weekCreated ? Math.min(100, weekDone / weekCreated * 100) : 0, color: "var(--green)", label: "Week flow", detail: `${weekDone} tasks completed and ${weekCreated} created in the last seven days.` },
+          ]} />
         </div>
       </section>
 
@@ -145,28 +155,31 @@ export default function Dashboard() {
       </Card>
 
       {([
-        { label: "Open tasks", v: open.length, tone: "butter", spark: week.map((d) => d.tasks_created), to: "/tasks" },
-        { label: "Habit streak", v: Math.max(0, ...h.map((x) => x.current_streak)), tone: "mint", spark: week.map((d) => d.habits_done), to: "/habits", suffix: " d" },
-        { label: "Net this month", v: net, tone: "sky", money: true, spark: week.map((d) => num(d.income) - num(d.expenses)), to: "/finance" },
-        { label: "Overdue", v: overdue.length, tone: "blush", spark: week.map((d) => d.tasks_completed), to: "/tasks" },
+        { label: "Open tasks", seriesName: "Tasks created", v: open.length, tone: "butter", spark: week.map((d) => d.tasks_created), to: "/tasks" },
+        { label: "Habit streak", seriesName: "Habit check-ins", v: Math.max(0, ...h.map((x) => x.current_streak)), tone: "mint", spark: week.map((d) => d.habits_done), to: "/habits", suffix: " d" },
+        { label: "Net this month", seriesName: "Daily net cash", v: net, tone: "sky", money: true, spark: week.map((d) => num(d.income) - num(d.expenses)), to: "/finance" },
+        { label: "Overdue", v: overdue.length, tone: "blush", to: "/tasks" },
       ] as const).map((s, i) => (
-        <Card key={s.label} tone={s.tone} className="s2 stat" i={i + 2}>
+        <Card key={s.label} tone={s.tone} className="s3 stat" i={i + 2}>
           <Link to={s.to} className="lbl"><span className="mono">{s.label}</span><ArrowUpRight className="ic" style={{ width: 14, height: 14 }} /></Link>
           <div className="big" style={{ margin: "10px 0 6px", fontSize: "money" in s ? 22 : 30 }}>{loading ? "—" : <Count value={s.v} money={"money" in s} />}{"suffix" in s ? s.suffix : ""}</div>
-          <Spark values={s.spark.length ? s.spark : [0, 0]} />
+          {"spark" in s && s.spark.length > 0 && <><span className="sm mute">{s.seriesName} · last 7 days</span><Spark name={s.seriesName} labels={week.map(d => shortDate(d.day))} values={s.spark}
+            format={"money" in s ? money : undefined}
+            details={"money" in s ? week.map(d => `${money(d.income)} income less ${money(d.expenses)} expenses.`) : undefined} /></>}
+          {!("spark" in s) && <span className="sm mute">{overdue.length ? `Oldest due ${shortDate(overdue.reduce((a, b) => (a.due_at || "") < (b.due_at || "") ? a : b).due_at)}` : "All tasks on time"}</span>}
         </Card>
       ))}
 
       <Card className="s8" i={6}>
         <CardHead mono="Productivity" title="Tasks & habits completed" right={<Seg value={range} options={[["7", "7 days"], ["30", "30 days"]]} onChange={setRange} />} />
-        {insights.isLoading ? <Skeleton rows={5} /> : <LineChart labels={labels} series={[{ name: "Tasks done", values: windowed.map((d) => d.tasks_completed), color: "var(--acc)" }, { name: "Habits done", values: windowed.map((d) => d.habits_done), color: "var(--amber)" }]} />}
+        {insights.isLoading ? <Skeleton rows={5} /> : <LineChart labels={labels} series={[{ name: "Tasks done", values: windowed.map((d) => d.tasks_completed), details: windowed.map(d => includesRecord(d.completed_task)), color: "var(--acc)" }, { name: "Habits done", values: windowed.map((d) => d.habits_done), details: windowed.map(d => includesRecord(d.completed_habit)), color: "var(--amber)" }]} />}
       </Card>
-      <Card className="s4" i={8}><CardHead mono="This week" title="Tasks completed" />{week.length && week.some((d) => d.tasks_completed > 0) ? <Bars labels={week.map((d) => new Date(d.day + "T00:00").toLocaleDateString("en", { weekday: "narrow" }))} values={week.map((d) => d.tasks_completed)} /> : <Empty title="No completed tasks this week" hint="Complete a task to see your weekly progress." action={<button className="btn sm" onClick={() => navigate("/tasks")}>Open tasks</button>} />}</Card>
-      <Card className="s4" i={9}><CardHead mono="Consistency" title="Habit activity" />{h.length ? <Heatmap cells={heat.cells} startWeekday={heat.first} tips={heat.tips} /> : <Empty title="No habits yet" hint="Build a streak." action={<button className="btn sm" onClick={() => navigate("/habits?new=1")}>Add habit</button>} />}</Card>
-      <Card className="s4" i={10}>
+      <Card className="s4 dashboard-week-chart-card" i={8}><CardHead mono="This week" title="Tasks completed" />{week.length && week.some((d) => d.tasks_completed > 0) ? <Bars height={320} xLabel="Date" yLabel="Tasks completed" labels={week.map((d) => shortDate(d.day))} values={week.map((d) => d.tasks_completed)} details={week.map(d => includesRecord(d.completed_task))} /> : <Empty title="No completed tasks this week" hint="Complete a task to see your weekly progress." action={<button className="btn sm" onClick={() => navigate("/tasks")}>Open tasks</button>} />}</Card>
+      <Card className="s6 dashboard-compact-card dashboard-heat-card" i={9}><CardHead mono="Consistency" title="Habit activity" />{h.length ? <div className="dashboard-heat-wrap"><Heatmap cells={heat.cells} startWeekday={heat.first} tips={heat.tips} values={series.slice(-35).map(d => d.habits_done)} /></div> : <Empty title="No habits yet" hint="Build a streak." action={<button className="btn sm" onClick={() => navigate("/habits?new=1")}>Add habit</button>} />}</Card>
+      <Card className="s6 dashboard-compact-card" i={10}>
         <CardHead mono="Projects" title="Progress" right={<Link className="lnk acc sm" to="/projects">All</Link>} />
         <div className="list">
-          {(projects.data ?? []).filter((p) => p.status === "active").slice(0, 4).map((p) => { const pr = progress.get(p.id); const pct = pr?.total ? (pr.done / pr.total) * 100 : 0; return <div key={p.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{p.name}</b><span className="mono">{Math.round(pct)}%</span></div><Progress value={pct} /></div>; })}
+          {(projects.data ?? []).filter((p) => p.status === "active").slice(0, 4).map((p) => { const pr = progress.get(p.id); const pct = pr?.total ? (pr.done / pr.total) * 100 : 0; return <div key={p.id} className="li" style={{ display: "block" }}><div className="row sb"><b>{p.name}</b><span className="mono">{Math.round(pct)}%</span></div><Progress value={pct} label={p.name} detail={`${pr?.done ?? 0} of ${pr?.total ?? 0} project tasks completed.`} /></div>; })}
           {!(projects.data ?? []).length && <Empty title="No projects" hint="Group tasks into projects." />}
         </div>
       </Card>
@@ -179,7 +192,7 @@ export default function Dashboard() {
       </Card>
       <Card className="s6" i={12}>
         <CardHead mono="Spending" title="This month by category" right={<Link className="lnk acc sm" to="/finance">Finance</Link>} />
-        {spend.length ? <div className="rg" style={{ justifyContent: "space-around", flexWrap: "wrap" }}><Donut size={160} slices={spend.map((s, i) => ({ ...s, color: PALETTE[i % PALETTE.length] }))} center={money(spendTotal)} sub="spent" /><ul>{spend.map((s, i) => <li key={s.label}><i style={{ background: PALETTE[i % PALETTE.length] }} />{s.label} <b className="num">{money(s.value)}</b></li>)}</ul></div> : <Empty title="No spending yet" hint="Log an expense to see the breakdown." action={<button className="btn sm" onClick={() => navigate("/finance?new=1")}>Add transaction</button>} />}
+        {spend.length ? <Donut size={160} slices={spend.map((s, i) => ({ ...s, color: PALETTE[i % PALETTE.length] }))} center={money(spendTotal)} sub="spent" /> : <Empty title="No spending yet" hint="Log an expense to see the breakdown." action={<button className="btn sm" onClick={() => navigate("/finance?new=1")}>Add transaction</button>} />}
       </Card>
 
       <Card className="s6" i={13}>
@@ -188,7 +201,7 @@ export default function Dashboard() {
       </Card>
       <Card className="s6" i={14}>
         <CardHead mono="Cash flow" title="Income vs expenses" />
-        {series.length ? <LineChart height={190} labels={series.slice(-14).map((d) => shortDate(d.day + "T00:00"))} format={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} series={[{ name: "Income", values: series.slice(-14).map((d) => num(d.income)), color: "var(--green)" }, { name: "Expenses", values: series.slice(-14).map((d) => num(d.expenses)), color: "var(--rose)" }]} /> : <Skeleton />}
+        {series.length ? <LineChart height={190} labels={series.slice(-14).map((d) => shortDate(d.day + "T00:00"))} format={money} axisFormat={compact} series={[{ name: "Income", values: series.slice(-14).map((d) => num(d.income)), details: series.slice(-14).map(d => largestTransaction(d, "income")), color: "var(--green)" }, { name: "Expenses", values: series.slice(-14).map((d) => num(d.expenses)), details: series.slice(-14).map(d => largestTransaction(d, "expense")), color: "var(--rose)" }]} /> : <Skeleton />}
         <div className="row sb sm mute" style={{ marginTop: 8 }}><span><Flame className="ic" style={{ display: "inline", width: 13, height: 13 }} /> Month: {money(summary.data?.income)} in</span><span>{money(summary.data?.expenses)} out</span></div>
       </Card>
 
@@ -255,7 +268,7 @@ export default function Dashboard() {
                   <td className="num">{r.current}</td>
                   <td className="num mute">{r.previous}</td>
                   <td className="num mute">{r.earlier}</td>
-                  <td style={{ width: 120 }}><Spark values={r.spark} color="var(--acc)" /></td>
+                  <td style={{ width: 120 }}><Spark name={r.name} labels={r.spark.map(p => p.label)} values={r.spark.map(p => p.value)} format={r.format} color="var(--acc)" /></td>
                   <td><span className="pill">{r.change}</span></td>
                 </tr>
               ))}

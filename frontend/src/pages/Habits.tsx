@@ -7,11 +7,13 @@ import { useNewParam } from "../hooks/useNewParam";
 import { addDays, isoDate } from "../lib/format";
 import type { Habit } from "../lib/types";
 
-function HabitHistory({ id }: { id: string }) {
+function HabitHistory({ id, name }: { id: string; name: string }) {
   const entries = useHabitEntries(id);
   const done = new Set((entries.data ?? []).filter((e) => e.status === "completed").map((e) => e.entry_date.slice(0, 10)));
   const days = Array.from({ length: 35 }, (_, i) => addDays(new Date(), i - 34));
-  return <Heatmap cells={days.map((d) => (done.has(isoDate(d)) ? 4 : 0))} startWeekday={days[0].getDay()} tips={days.map((d) => `${d.toLocaleDateString("en", { day: "numeric", month: "short" })}\n${done.has(isoDate(d)) ? "Done" : "—"}`)} />;
+  if (entries.isLoading) return <Skeleton rows={2} />;
+  if (entries.isError) return <ErrorBox error={entries.error} retry={() => void entries.refetch()} />;
+  return <Heatmap name={name} values={days.map(d => Number(done.has(isoDate(d))))} cells={days.map((d) => (done.has(isoDate(d)) ? 4 : 0))} startWeekday={days[0].getDay()} tips={days.map((d) => `${d.toLocaleDateString("en", { day: "numeric", month: "short" })}\n${done.has(isoDate(d)) ? "Done" : "—"}`)} />;
 }
 
 const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
@@ -114,19 +116,19 @@ export default function Habits() {
     <>
       <PageHead title="Habits" sub={list.length ? `${done} of ${list.length} done today` : "Small things, done daily"}><button className="btn pri" onClick={showNew}><Plus className="ic" />New habit</button></PageHead>
       {habits.isLoading ? <Card><Skeleton rows={4} /></Card> : habits.isError ? <ErrorBox error={habits.error} retry={() => void habits.refetch()} /> : list.length === 0 ? <Card><Empty title="No habits yet" hint="Pick one small habit and check in daily to build a streak." action={<button className="btn pri sm" onClick={showNew}>Create habit</button>} /></Card> : (
-        <div className="pc">{list.map((h, i) => (
+        <div className="pc habit-grid">{list.map((h, i) => (
           <Card key={h.id} i={i} className="habit-card" tone={h.completed_today ? "mint" : undefined}>
-            <div className="row sb"><button type="button" className="lnk" onClick={() => setEditing(h)} aria-label={`Edit ${h.name}`}><h3>{h.name}</h3></button><div className="row"><span className="pill md"><Flame className="ic" style={{ width: 12, height: 12 }} />{h.current_streak}d</span><button className="iconbtn" aria-label={`Archive ${h.name}`} onClick={() => setDeleting(h)}><Trash2 className="ic" style={{ width: 14, height: 14 }} /></button></div></div>
+            <div className="row sb"><button type="button" className="habit-name" onClick={() => setEditing(h)} aria-label={`Edit ${h.name}`}><h3>{h.name}</h3></button><div className="row"><span className="pill md"><Flame className="ic" style={{ width: 12, height: 12 }} />{h.current_streak}d</span><button className="iconbtn" aria-label={`Archive ${h.name}`} onClick={() => setDeleting(h)}><Trash2 className="ic" style={{ width: 14, height: 14 }} /></button></div></div>
             <p className="mute sm" style={{ margin: "4px 0 12px" }}>{h.description || (h.schedule_type === "daily" ? "Every day" : "Scheduled days")}</p>
-            <Progress value={h.consistency_30d} />
+            <Progress value={h.consistency_30d} label={h.name + " consistency"} detail={`${Math.round(h.consistency_30d * h.scheduled_days_30d / 100)} of ${h.scheduled_days_30d} eligible days completed in the last 30 days. Skipped days are excluded.`} />
             <div className="row sb sm mute" style={{ margin: "8px 0 12px" }}><span>30-day consistency</span><b className="num">{h.consistency_30d}%</b></div>
             <div className="row wrap">
-              <button className={`btn sm ${h.completed_today ? "" : "pri"}`} disabled={check.isPending} onClick={(e) => h.measurement_type === "boolean" ? check.mutate({ id: h.id, status: "completed" }, { onSuccess: () => confetti(e.currentTarget) }) : setLogging(h)}>Input</button>
+              <button className={`btn sm ${h.completed_today ? "" : "pri"}`} disabled={check.isPending} onClick={(e) => h.measurement_type === "boolean" && !h.daily_note_required ? check.mutate({ id: h.id, status: "completed" }, { onSuccess: () => confetti(e.currentTarget) }) : setLogging(h)}>Input</button>
               <button className="btn sm ghost" disabled={check.isPending} onClick={() => check.mutate({ id: h.id, status: "missed", value: 0 })}>Decline</button>
               <button className="btn sm ghost" disabled={check.isPending} onClick={() => { setSkipping(h); setSkipNote(""); }}>Skip</button>
             </div>
             <button type="button" className="btn sm habit-history-toggle" style={{ marginTop: 12 }} aria-expanded={historyOpen.has(h.id)} onClick={() => setHistoryOpen((current) => { const next = new Set(current); next.has(h.id) ? next.delete(h.id) : next.add(h.id); return next; })}>{historyOpen.has(h.id) ? "Hide progress" : "View progress"}</button>
-            {historyOpen.has(h.id) && <div className="habit-history-panel"><HabitHistory id={h.id} /></div>}
+            {historyOpen.has(h.id) && <div className="habit-history-panel"><HabitHistory id={h.id} name={h.name} /></div>}
           </Card>
         ))}</div>
       )}
@@ -139,7 +141,7 @@ export default function Habits() {
         initial={habitInitial(editing)}
         fields={habitFields()}
         onSubmit={(v) => update.mutate({ id: editing.id, ...habitPayload(v) }, { onSuccess: () => setEditing(null) })} />}
-      {logging && <FormModal title={`Log ${logging.name}`} busy={check.isPending} onClose={() => setLogging(null)} fields={logging.measurement_type === "text" ? [{ name: "note", label: "What did you do?", type: "textarea", required: true }] : [{ name: "value", label: logging.unit ? `Amount (${logging.unit})` : "Amount", type: "number", step: "0.01", min: 0, required: true }]} onSubmit={(v) => check.mutate({ id: logging.id, status: "completed", value: v.value ? Number(v.value) : null, note: v.note }, { onSuccess: () => { setLogging(null); } })} />}
+      {logging && <FormModal title={`Log ${logging.name}`} busy={check.isPending} onClose={() => setLogging(null)} fields={[...(logging.measurement_type === "boolean" || logging.measurement_type === "text" ? [] : [{ name: "value", label: logging.unit ? `Amount (${logging.unit})` : "Amount", type: "number" as const, step: "0.01", min: 0, required: true }]), ...(logging.daily_note_required || logging.measurement_type === "text" ? [{ name: "note", label: "What did you do?", type: "textarea" as const, required: true }] : [])]} onSubmit={(v) => check.mutate({ id: logging.id, status: "completed", value: v.value ? Number(v.value) : null, note: v.note }, { onSuccess: () => { confetti(); setLogging(null); } })} />}
       {skipping && <FormModal title={`Skip ${skipping.name}`} busy={check.isPending} onClose={() => setSkipping(null)}
         fields={[{ name: "note", label: "Why are you skipping today?", type: "textarea", required: true }]}
         onSubmit={(v) => check.mutate({ id: skipping.id, status: "skipped", note: v.note.trim() }, { onSuccess: () => setSkipping(null) })} />}
