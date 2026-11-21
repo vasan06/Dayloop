@@ -27,6 +27,7 @@ class ProjectFields(TypedDict, total=False):
     name: Name
     description: str
     color: Label
+    banner_key: Label
     status: Literal["active", "on_hold", "completed"]
     start_date: date | None
     due_date: date | None

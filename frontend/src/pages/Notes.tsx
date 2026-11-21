@@ -124,7 +124,7 @@ function Editor({ id }: { id: string }) {
     if (!edited.current) return;
     edited.current = false;
     queue.edit({ title, blocks });
-    const timer = window.setTimeout(queue.flush, 800);
+    const timer = window.setTimeout(queue.flush, 2500);
     return () => window.clearTimeout(timer);
   }, [queue, title, blocks]);
 
@@ -283,8 +283,8 @@ function Editor({ id }: { id: string }) {
         <button type="button" className="add-block-button" onClick={() => { const last = blocks[blocks.length - 1]; if (last) insertAfter(last.id); else { const first = { id: makeId(), type: "paragraph" as const, text: "" }; setBlocks([first]); focusId.current = first.id; edited.current = true; } }}><Plus /> Add a block</button>
       </div>
       <div className="row sb sm mute note-savebar">
-        <span role="status">{status === "error" ? queue.error : status === "saving" ? "Saving…" : status === "pending" ? "Changes pending…" : "All changes saved"}</span>
-        <button className="btn sm" onClick={() => void queue.flush()} disabled={status === "saved" || status === "saving"}>{status === "error" ? "Retry save" : "Save now"}</button>
+        <span role="status">{status === "error" ? queue.error : status === "saving" ? "Autosaving…" : status === "pending" ? "Autosave queued…" : "All changes saved"}</span>
+        <span className="mono">Saves after 2.5s idle + on page exit</span>
       </div>
     </div>
   );
@@ -305,8 +305,8 @@ export default function Notes() {
   return (
     <>
       <PageHead title="Notes" sub={`${notes.data?.length ?? 0} pages · write with structured blocks`}><button className="btn pri" onClick={showNew}><Plus className="ic" />New note</button></PageHead>
-      <div className="g">
-        <Card className="s4">
+      <div className="g notes-layout">
+        <Card className="s3 notes-list-card">
           <label className="search2 search"><Search className="ic" /><input placeholder="Search notes" aria-label="Search notes" value={q} onChange={(event) => setQ(event.target.value)} /></label>
           {notes.isLoading ? <Skeleton /> : notes.isError ? <ErrorBox error={notes.error} retry={() => void notes.refetch()} /> : list.length === 0 ? <Empty title="No notes" hint="Capture ideas, meeting notes, anything." /> : <div className="list">{list.map((note) => (
             <button key={note.id} className="li" onClick={() => select(note.id)} style={{ border: 0, background: note.id === selected ? "var(--acc-soft)" : undefined, cursor: "pointer", textAlign: "left" }}>
@@ -314,7 +314,7 @@ export default function Notes() {
             </button>
           ))}</div>}
         </Card>
-        <Card className="s8">
+        <Card className="s9 notes-editor-card">
           {selected ? <><div className="row" style={{ justifyContent: "flex-end", marginBottom: 6 }}><button className="btn sm ghost" onClick={() => setDeleting(true)}><Trash2 className="ic" style={{ width: 14, height: 14 }} />Delete</button></div><Editor key={selected} id={selected} /></> : <Empty title="Select or create a note" hint="Your writing is saved automatically." />}
         </Card>
       </div>

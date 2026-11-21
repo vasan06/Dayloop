@@ -54,3 +54,23 @@ def test_explicit_failure_today_breaks_streak():
     from app.features.habits.metrics import calculate_habit_metrics
     entries = [{"entry_date": date(2026, 11, day), "status": status} for day, status in [(19, "completed"), (20, "failed")]]
     assert calculate_habit_metrics({"timezone": "UTC"}, entries, date(2026, 11, 20))["current_streak"] == 0
+
+
+def test_zero_target_is_avoidance_habit():
+    assert measurable_status(0, 0, "at_least") == "completed"
+    assert measurable_status(None, 0, "at_least") == "completed"
+    assert measurable_status(1, 0, "at_least") == "failed"
+
+
+def test_zero_target_missing_past_days_auto_pass_for_metrics():
+    from app.features.habits.metrics import calculate_habit_metrics
+    habit = {
+        "timezone": "UTC",
+        "schedule_type": "daily",
+        "schedule_config": {},
+        "measurement_type": "quantity",
+        "target_value": 0,
+    }
+    metrics = calculate_habit_metrics(habit, [], date(2026, 11, 20))
+    assert metrics["consistency_30d"] > 0
+    assert metrics["current_streak"] > 0

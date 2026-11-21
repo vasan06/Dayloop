@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: String(import.meta.env.VITE_FIREBASE_API_KEY ?? "").trim(),
@@ -31,3 +31,9 @@ export const firebaseApp = firebaseConfigured
   : null;
 
 export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null;
+
+if (firebaseAuth) {
+  void setPersistence(firebaseAuth, browserLocalPersistence).catch(() => {
+    // Firebase still manages the active in-memory session if persistence is unavailable.
+  });
+}

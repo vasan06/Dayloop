@@ -103,7 +103,16 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <Card tone="acc" className="s4 nba" i={1}>
+      <Card className="s4 completion-card task-completion" i={1}>
+        <CardHead mono="TODAY · TASKS" title="Task completion" />
+        <Gauge value={gauge} label={`${doneToday} of ${dueTodayTotal || 0} tasks done`} />
+      </Card>
+      <Card className="s4 completion-card habit-completion" i={2}>
+        <CardHead mono="TODAY · HABITS" title="Habit completion" />
+        <Gauge value={h.length ? (habitsDone / h.length) * 100 : 0} label={`${habitsDone} of ${h.length} habits done`} />
+      </Card>
+
+      <Card tone="acc" className="s4 nba" i={3}>
         <div className="mono"><Sparkles className="ic" style={{ display: "inline", width: 14, height: 14 }} /> Next best action</div>
         {best ? (
           <>

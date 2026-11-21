@@ -106,16 +106,16 @@ export default function Habits() {
   const [skipping, setSkipping] = useState<Habit | null>(null);
   const [skipNote, setSkipNote] = useState("");
   const [editing, setEditing] = useState<Habit | null>(null);
+  const [historyOpen, setHistoryOpen] = useState<Set<string>>(() => new Set());
   const list = habits.data ?? [];
   const done = list.filter((h) => h.completed_today).length;
 
   return (
     <>
       <PageHead title="Habits" sub={list.length ? `${done} of ${list.length} done today` : "Small things, done daily"}><button className="btn pri" onClick={showNew}><Plus className="ic" />New habit</button></PageHead>
-      <Card className="s12"><CardHead mono="All habits" title="Combined progress" />{insights.isError ? <ErrorBox error={insights.error} retry={() => void insights.refetch()} /> : insights.isLoading ? <Skeleton rows={3} /> : insights.data?.series?.some((point) => point.completed || point.skipped || point.scheduled || point.active) ? <HabitProgressChart points={insights.data.series} /> : <Empty title="No habit activity yet" hint="Check in a habit to start the combined chart." />}</Card>
       {habits.isLoading ? <Card><Skeleton rows={4} /></Card> : habits.isError ? <ErrorBox error={habits.error} retry={() => void habits.refetch()} /> : list.length === 0 ? <Card><Empty title="No habits yet" hint="Pick one small habit and check in daily to build a streak." action={<button className="btn pri sm" onClick={showNew}>Create habit</button>} /></Card> : (
         <div className="pc">{list.map((h, i) => (
-          <Card key={h.id} i={i} tone={h.completed_today ? "mint" : undefined}>
+          <Card key={h.id} i={i} className="habit-card" tone={h.completed_today ? "mint" : undefined}>
             <div className="row sb"><button type="button" className="lnk" onClick={() => setEditing(h)} aria-label={`Edit ${h.name}`}><h3>{h.name}</h3></button><div className="row"><span className="pill md"><Flame className="ic" style={{ width: 12, height: 12 }} />{h.current_streak}d</span><button className="iconbtn" aria-label={`Archive ${h.name}`} onClick={() => setDeleting(h)}><Trash2 className="ic" style={{ width: 14, height: 14 }} /></button></div></div>
             <p className="mute sm" style={{ margin: "4px 0 12px" }}>{h.description || (h.schedule_type === "daily" ? "Every day" : "Scheduled days")}</p>
             <Progress value={h.consistency_30d} />
@@ -125,10 +125,12 @@ export default function Habits() {
               <button className="btn sm ghost" disabled={check.isPending} onClick={() => check.mutate({ id: h.id, status: "missed", value: 0 })}>Decline</button>
               <button className="btn sm ghost" disabled={check.isPending} onClick={() => { setSkipping(h); setSkipNote(""); }}>Skip</button>
             </div>
-            <div style={{ marginTop: 14 }}><HabitHistory id={h.id} /></div>
+            <button type="button" className="btn sm habit-history-toggle" style={{ marginTop: 12 }} aria-expanded={historyOpen.has(h.id)} onClick={() => setHistoryOpen((current) => { const next = new Set(current); next.has(h.id) ? next.delete(h.id) : next.add(h.id); return next; })}>{historyOpen.has(h.id) ? "Hide progress" : "View progress"}</button>
+            {historyOpen.has(h.id) && <div className="habit-history-panel"><HabitHistory id={h.id} /></div>}
           </Card>
         ))}</div>
       )}
+      <Card className="s12 habit-combined-card"><CardHead mono="All habits" title="Combined progress" />{insights.isError ? <ErrorBox error={insights.error} retry={() => void insights.refetch()} /> : insights.isLoading ? <Skeleton rows={3} /> : insights.data?.series?.some((point) => point.completed || point.skipped || point.scheduled || point.active) ? <HabitProgressChart points={insights.data.series} /> : <Empty title="No habit activity yet" hint="Check in a habit to start the combined chart." />}</Card>
       {isNew && <FormModal title="New habit" busy={create.isPending} onClose={closeNew}
         initial={{ measurement_type: "boolean", target_type: "at_least", frequency: "daily", reminder: "none", reminder_time: "09:00", daily_note_required: "no" }}
         fields={habitFields()}

@@ -8,10 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException
 
 from app.api.health import router as health_router
+from app.features.admin.routes import router as admin_router
 from app.core.config import get_settings
 from app.features.attachments.routes import router as attachments_router
 from app.features.calendar.routes import router as calendar_router
 from app.features.finance.routes import router as finance_router
+from app.features.feedback.routes import router as feedback_router
 from app.features.goals.routes import router as goals_router
 from app.features.habits.routes import router as habits_router
 from app.features.insights.routes import router as insights_router
@@ -52,6 +54,18 @@ def create_app() -> FastAPI:
         expose_headers=["Content-Type"],
     )
 
+    @application.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if settings["app_env"] != "development":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
     @application.exception_handler(HTTPException)
     async def handle_http_error(request: Request, error: HTTPException) -> JSONResponse:
         detail = error.detail
@@ -91,6 +105,7 @@ def create_app() -> FastAPI:
         )
 
     routers = [
+        admin_router,
         insights_router,
         health_router,
         projects_router,
@@ -99,6 +114,7 @@ def create_app() -> FastAPI:
         notes_router,
         habits_router,
         finance_router,
+        feedback_router,
         goals_router,
         trackers_router,
         calendar_router,

@@ -13,6 +13,14 @@ _CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@syst
 _CERT_CACHE: dict[str, object] = {"expires_at": 0.0, "certs": {}}
 
 
+def _ensure_enabled(user: dict | None) -> dict:
+    if not user:
+        raise HTTPException(status_code=401, detail="User account was not found.")
+    if user.get("admin_disabled"):
+        raise HTTPException(status_code=403, detail="This DayLoop account has been disabled by an administrator.")
+    return user
+
+
 def _firebase_certs() -> dict[str, str]:
     now = time.time()
     certs = _CERT_CACHE.get("certs")
@@ -83,18 +91,18 @@ def get_current_user(
         if not x_dayloop_dev_user:
             raise HTTPException(status_code=401, detail="Local development identity is missing.")
         from app.core.database import fetch_one
-        return fetch_one(
-            "INSERT INTO users (firebase_uid,email,display_name) VALUES (%s,%s,%s) "
+        return _ensure_enabled(fetch_one(
+            "INSERT INTO users (firebase_uid,email,display_name,last_seen_at) VALUES (%s,%s,%s,now()) "
             "ON CONFLICT (firebase_uid) DO UPDATE SET "
             "email=COALESCE(EXCLUDED.email,users.email),"
-            "display_name=COALESCE(users.display_name,EXCLUDED.display_name),updated_at=now() "
-            "RETURNING id,firebase_uid",
+            "display_name=COALESCE(users.display_name,EXCLUDED.display_name),last_seen_at=now() "
+            "RETURNING id,firebase_uid,admin_disabled",
             (
                 f"local:{x_dayloop_dev_user}",
                 x_dayloop_dev_email or f"{x_dayloop_dev_user}@local.dayloop",
                 x_dayloop_dev_name or "Local DayLoop user",
             ),
-        )
+        ))
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -109,10 +117,10 @@ def get_current_user(
         raise HTTPException(status_code=401, detail=detail) from error
 
     from app.core.database import fetch_one
-    return fetch_one(
-        "INSERT INTO users (firebase_uid,email,display_name) VALUES (%s,%s,%s) "
+    return _ensure_enabled(fetch_one(
+        "INSERT INTO users (firebase_uid,email,display_name,last_seen_at) VALUES (%s,%s,%s,now()) "
         "ON CONFLICT (firebase_uid) DO UPDATE SET email=EXCLUDED.email,"
-        "display_name=COALESCE(users.display_name,EXCLUDED.display_name),updated_at=now() "
-        "RETURNING id,firebase_uid",
+        "display_name=COALESCE(users.display_name,EXCLUDED.display_name),last_seen_at=now() "
+        "RETURNING id,firebase_uid,admin_disabled",
         (claims["uid"], claims.get("email"), claims.get("name")),
-    )
+    ))

@@ -8,7 +8,7 @@ from psycopg.types.json import Jsonb
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one, get_connection
-from app.features.habits.metrics import calculate_habit_metrics, habit_start_date
+from app.features.habits.metrics import calculate_habit_metrics, habit_start_date, normalize_zero_target_entries
 from app.features.habits.reminders import sync_habit_reminder
 from app.services.streaks import habit_is_scheduled, local_today, measurable_status, streak_history, timezone_for_stored_value, validate_timezone
 
@@ -53,7 +53,8 @@ def habit_insights(days: int = 42, user: dict = Depends(get_current_user)) -> di
     habits, entries = load_habits(user["id"])
     streaks = []
     for habit in habits:
-        history = entries[habit["id"]]
+        habit_day = local_today(habit["timezone"])
+        history = normalize_zero_target_entries(habit, entries[habit["id"]], habit_day)
         by_day = {entry["entry_date"]: entry["status"] for entry in history}
         start = habit_start_date(habit, today)
         for day, point in series.items():
@@ -219,8 +220,8 @@ def streak_overview(user: dict = Depends(get_current_user)) -> dict:
     events = []
     longest = 0
     for habit in habits:
-        history = entries[habit["id"]]
         habit_day = local_today(habit["timezone"])
+        history = normalize_zero_target_entries(habit, entries[habit["id"]], habit_day)
         result = streak_history(history, habit["schedule_type"] or "daily", habit["schedule_config"] or {}, habit_day)
         current = result["current"]
         longest = max(longest, result["longest"])
@@ -287,6 +288,9 @@ def save_entry(
     if status == "completed" and (habit["daily_note_required"] or habit["measurement_type"] == "text") and not note.strip():
         raise HTTPException(422, "A note is required for this check-in.")
     value = measurement(payload.get("value"))
+    if status == "missed" and habit["target_value"] == 0 and habit["measurement_type"] in {"quantity", "duration"}:
+        status = "completed"
+        value = 0
     if status == "completed" and habit["measurement_type"] in {"quantity", "duration"}:
         status = measurable_status(
             value,
