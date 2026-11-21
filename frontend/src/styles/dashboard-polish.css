@@ -183,3 +183,37 @@ button:not([class]):focus-visible{outline:2px solid var(--acc);outline-offset:3p
   margin-inline:auto!important;
   gap:6px!important;
 }
+
+
+/* heatmap reference sizing */
+.dashboard-heat-card .dashboard-heat-wrap{
+  width:100%!important;
+  min-height:430px!important;
+  padding:28px 14px 32px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.dashboard-heat-card .dashboard-heat-wrap>.plot{
+  width:min(100%,470px)!important;
+  margin:0 auto!important;
+}
+.dashboard-heat-card .hmh,
+.dashboard-heat-card .hm{
+  width:min(100%,470px)!important;
+  max-width:470px!important;
+  margin-inline:auto!important;
+}
+.dashboard-heat-card .hmh{
+  margin-bottom:14px!important;
+}
+.dashboard-heat-card .hm{
+  gap:6px!important;
+  min-height:0!important;
+}
+.dashboard-heat-card .hm .heat-cell,
+.dashboard-heat-card .hm>i{
+  aspect-ratio:1/1!important;
+  min-width:0!important;
+  border-radius:8px!important;
+}

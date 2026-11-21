@@ -1,5 +1,5 @@
 import { createContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { CalendarDays, CheckCircle2, Eye, EyeOff, Flame, Target, TimerReset } from "lucide-react";
 import Landing from "./Landing";
 import { Logo } from "../components/Shell";
 import { Modal } from "../components/ui";
@@ -124,7 +124,6 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
   const [showPw, setShowPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [demoView, setDemoView] = useState<"tasks" | "habits" | "focus" | "finance">("tasks");
   const [info, setInfo] = useState("");
   const register = mode === "signup";
   const [email, setEmail] = useState("");
@@ -135,13 +134,6 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
   const [tourOpen, setTourOpen] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const [tourStep, setTourStep] = useState(0);
-  const [demoTodos, setDemoTodos] = useState(["Review project brief", "Plan the week"]);
-  const [demoTodoInput, setDemoTodoInput] = useState("");
-  const [demoHabitDone, setDemoHabitDone] = useState(false);
-  const [demoSeconds, setDemoSeconds] = useState(25 * 60);
-  const [demoTimerRunning, setDemoTimerRunning] = useState(false);
-  const [demoTransactions, setDemoTransactions] = useState([2400, -850, -320]);
-  const [demoFinanceInput, setDemoFinanceInput] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -303,17 +295,6 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
     setMode("signin");
   }
 
-  useEffect(() => {
-    if (!demoTimerRunning) return;
-    const timer = window.setInterval(() => setDemoSeconds((seconds) => {
-      if (seconds <= 1) {
-        setDemoTimerRunning(false);
-        return 0;
-      }
-      return seconds - 1;
-    }), 1000);
-    return () => window.clearInterval(timer);
-  }, [demoTimerRunning]);
   const strength = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(password)).length;
   const passwordMatches = confirmPassword.length > 0 && password === confirmPassword;
   useEffect(() => {
@@ -333,38 +314,45 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
   );
   const shell = (content: ReactNode) => (
     <main className={`auth auth-v2 auth-mode-${mode}`}>
-      <section className="l">
+      <section className="l auth-form-pane">
         <div className="fw">{content}</div>
       </section>
-      <aside className="r auth-demo" aria-label="Interactive DayLoop product demonstration">
-        <div className="auth-aside-top"><Logo /></div>
-        <div className="auth-aside-content">
+      <aside className="r auth-growth-pane" aria-label="DayLoop daily growth preview">
+        <div className="auth-growth-wrap">
+          <div className="auth-growth-copy">
+            <span className="mono">DAILY SYSTEM</span>
+            <h2>Build a day you can repeat.</h2>
+            <p>Plan what matters, practise it consistently, and review the day before starting again.</p>
+          </div>
 
-          <div className="auth-demo-tabs" role="tablist" aria-label="Explore DayLoop features">
-            {([["tasks","Tasks"],["habits","Habits"],["focus","Focus"],["finance","Finance"]] as const).map(([key,label]) => <button type="button" role="tab" aria-selected={demoView===key} className={demoView===key?"active":""} key={key} onClick={()=>setDemoView(key)}>{label}</button>)}
+          <section className="auth-day-card">
+            <div className="auth-day-head">
+              <span><CalendarDays />Saturday · 21 November</span>
+              <strong>Today</strong>
+            </div>
+
+            <div className="auth-priority-list">
+              <div className="done"><CheckCircle2 /><span>Review the first draft</span></div>
+              <div><Target /><span>Make the DayLoop mobile app</span></div>
+              <div><CheckCircle2 /><span>Read for 30 minutes</span></div>
+            </div>
+
+            <div className="auth-growth-stats">
+              <div><span className="auth-stat-icon"><Flame /></span><strong>4 / 5</strong><small>habits kept</small></div>
+              <div><span className="auth-stat-icon"><TimerReset /></span><strong>50m</strong><small>focused today</small></div>
+              <div><span className="auth-stat-icon"><Target /></span><strong>2 / 3</strong><small>priorities done</small></div>
+            </div>
+
+            <div className="auth-focus-block">
+              <time>14:30</time>
+              <div><b>Design review</b><span>Protected focus block · 45 min</span></div>
+            </div>
+          </section>
+
+          <div className="auth-review-row">
+            <span>End-of-day review</span>
+            <b>What moved forward today?</b>
           </div>
-          <div className="auth-demo-stage" role="tabpanel">
-            {demoView === "tasks" && <div className="demo-task-view">
-              <div className="demo-stage-top"><span>LIVE TODO</span><b>{demoTodos.length} items</b></div>
-              <div className="demo-live-list">{demoTodos.map((todo, index) => <div className="demo-live-row" key={todo}><button type="button" aria-label={`Complete ${todo}`} onClick={() => setDemoTodos((items) => items.filter((_, itemIndex) => itemIndex !== index))}>✓</button><span>{todo}</span><button type="button" aria-label={`Delete ${todo}`} onClick={() => setDemoTodos((items) => items.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}</div>
-              <form className="demo-live-add" onSubmit={(event) => { event.preventDefault(); if (demoTodoInput.trim()) setDemoTodos((items) => [...items, demoTodoInput.trim()]); setDemoTodoInput(""); }}><input aria-label="New demo task" value={demoTodoInput} onChange={(event) => setDemoTodoInput(event.target.value)} placeholder="Add a task" /><button type="submit">Add</button></form>
-            </div>}
-            {demoView === "habits" && <div className="demo-habit-view">
-              <div className="demo-stage-top"><span>LIVE HABIT</span><b>{demoHabitDone ? "1 day streak" : "Ready"}</b></div>
-              <button type="button" className={`demo-habit-toggle ${demoHabitDone ? "done" : ""}`} onClick={() => setDemoHabitDone((done) => !done)}><span>{demoHabitDone ? "✓" : "○"}</span><b>Drink water</b><small>{demoHabitDone ? "Progress updated" : "Tap to check in"}</small></button>
-              <div className="demo-habit-progress"><i style={{ width: demoHabitDone ? "100%" : "0%" }} /></div>
-            </div>}
-            {demoView === "focus" && <div className="demo-focus-view">
-              <span className="demo-focus-label">LIVE FOCUS TIMER</span><div className="demo-focus-clock">{String(Math.floor(demoSeconds / 60)).padStart(2, "0")}:{String(demoSeconds % 60).padStart(2, "0")}</div>
-              <div className="demo-live-actions"><button type="button" onClick={() => setDemoTimerRunning((running) => !running)}>{demoTimerRunning ? "Pause" : "Start"}</button><button type="button" onClick={() => { setDemoTimerRunning(false); setDemoSeconds(25 * 60); }}>Reset</button></div>
-            </div>}
-            {demoView === "finance" && <div className="demo-finance-view">
-              <div className="demo-stage-top"><span>LIVE FINANCE</span><b>{demoTransactions.reduce((total, value) => total + value, 0) >= 0 ? "Positive" : "Negative"}</b></div>
-              <strong className="demo-balance">₹{demoTransactions.reduce((total, value) => total + value, 0).toLocaleString()}</strong>
-              <form className="demo-live-add" onSubmit={(event) => { event.preventDefault(); const amount = Number(demoFinanceInput); if (amount) setDemoTransactions((items) => [...items, amount]); setDemoFinanceInput(""); }}><input aria-label="Income or expense amount" type="number" value={demoFinanceInput} onChange={(event) => setDemoFinanceInput(event.target.value)} placeholder="Use negative for expense" /><button type="submit">Add</button></form>
-            </div>}
-          </div>
-          <div className="demo-pagination">{["tasks","habits","focus","finance"].indexOf(demoView)+1} / 4</div>
         </div>
       </aside>
     </main>

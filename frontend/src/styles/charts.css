@@ -152,3 +152,44 @@
   min-height:340px!important;
   margin-top:auto!important;
 }
+
+
+/* analytics heatmap matches dashboard/reference footprint */
+.analytics-heat-card .analytics-heat-wrap{
+  width:100%!important;
+  min-height:430px!important;
+  padding:28px 14px 32px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.analytics-heat-card .analytics-heat-wrap>.plot{
+  width:min(100%,470px)!important;
+  margin:0 auto!important;
+}
+.analytics-heat-card .hmh,
+.analytics-heat-card .hm{
+  width:min(100%,470px)!important;
+  max-width:470px!important;
+  margin-inline:auto!important;
+}
+.analytics-heat-card .hmh{
+  margin-bottom:14px!important;
+}
+.analytics-heat-card .hm{
+  gap:6px!important;
+  min-height:0!important;
+}
+.analytics-heat-card .hm .heat-cell,
+.analytics-heat-card .hm>i{
+  aspect-ratio:1/1!important;
+  min-width:0!important;
+  border-radius:8px!important;
+}
+@media(max-width:640px){
+  .dashboard-heat-card .dashboard-heat-wrap,
+  .analytics-heat-card .analytics-heat-wrap{
+    min-height:360px!important;
+    padding:20px 8px 24px!important;
+  }
+}
