@@ -9,6 +9,7 @@ import { num, shortDate, toneOf } from "../lib/format";
 import type { Project } from "../lib/types";
 
 const STATUS: [string, string][] = [["active", "Active"], ["on_hold", "On hold"], ["completed", "Completed"]];
+const BANNERS: [string,string][] = [["aurora","Aurora"],["ocean","Ocean"],["sunset","Sunset"],["forest","Forest"],["violet","Violet"],["graphite","Graphite"],["citrus","Citrus"],["skyline","Skyline"]];
 
 export default function Projects() {
   const projects = useProjects();
@@ -30,6 +31,7 @@ export default function Projects() {
   const fields = [
     { name: "name", label: "Name", required: true },
     { name: "description", label: "Description", type: "textarea" as const },
+    { name: "banner_key", label: "Project banner", type: "banner" as const, options: BANNERS },
     { name: "status", label: "Status", type: "select" as const, options: STATUS, half: true },
     { name: "due_date", label: "Deadline", type: "date" as const, half: true },
   ];
@@ -47,7 +49,7 @@ export default function Projects() {
           return (
             <Card key={p.id} i={i}>
               <Link to={`/projects/${p.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
-                <div className={`cover tn-${toneOf(p.id)}`} />
+                <div className={`cover project-banner banner-${p.banner_key || "aurora"}`}><span>{p.name.slice(0,1).toUpperCase()}</span></div>
                 <div className="row sb"><h3>{p.name}</h3><span className={`pill ${p.status === "completed" ? "ok" : p.status === "on_hold" ? "md" : "blue"}`}>{STATUS.find(([k]) => k === p.status)?.[1]}</span></div>
                 <p className="mute sm" style={{ margin: "4px 0 12px" }}>{p.description || "No description"}</p>
                 <Progress value={pct} />
@@ -75,8 +77,8 @@ export default function Projects() {
         })}</div>}
       </Card>
 
-      {isNew && <FormModal title="New project" fields={fields} busy={create.isPending} onClose={closeNew} onSubmit={(v) => create.mutate({ name: v.name.trim(), description: v.description, status: v.status as Project["status"], ...(v.due_date ? { due_date: v.due_date } : {}) }, { onSuccess: closeNew })} />}
-      {editing && <FormModal title="Edit project" submit="Save changes" fields={fields} busy={update.isPending} onClose={() => setEditing(null)} initial={{ name: editing.name, description: editing.description, status: editing.status, due_date: editing.due_date?.slice(0, 10) ?? "" }} onSubmit={(v) => update.mutate({ id: editing.id, name: v.name.trim(), description: v.description, status: v.status as Project["status"], ...(v.due_date ? { due_date: v.due_date } : {}) }, { onSuccess: () => setEditing(null) })} />}
+      {isNew && <FormModal title="New project" fields={fields} busy={create.isPending} onClose={closeNew} onSubmit={(v) => create.mutate({ name: v.name.trim(), description: v.description, banner_key: v.banner_key || "aurora", status: v.status as Project["status"], ...(v.due_date ? { due_date: v.due_date } : {}) }, { onSuccess: closeNew })} />}
+      {editing && <FormModal title="Edit project" submit="Save changes" fields={fields} busy={update.isPending} onClose={() => setEditing(null)} initial={{ name: editing.name, description: editing.description, banner_key: editing.banner_key || "aurora", status: editing.status, due_date: editing.due_date?.slice(0, 10) ?? "" }} onSubmit={(v) => update.mutate({ id: editing.id, name: v.name.trim(), description: v.description, banner_key: v.banner_key || "aurora", status: v.status as Project["status"], ...(v.due_date ? { due_date: v.due_date } : {}) }, { onSuccess: () => setEditing(null) })} />}
       {deleting && <ConfirmModal title="Archive project?" body={`“${deleting.name}” will be hidden. Its tasks stay in your task list.`} confirm="Archive" onConfirm={() => remove.mutate(deleting.id)} onClose={() => setDeleting(null)} />}
       {goalOpen && <FormModal title="New goal" busy={createGoal.isPending} onClose={() => setGoalOpen(false)} fields={[{ name: "title", label: "Goal", required: true }, { name: "goal_type", label: "Type", type: "select", options: ["personal", "learning", "health", "finance", "career"].map((x) => [x, x[0].toUpperCase() + x.slice(1)] as [string, string]), half: true }, { name: "target_date", label: "Target date", type: "date", half: true }, { name: "target_value", label: "Target", type: "number", step: "any", half: true }, { name: "unit", label: "Unit", half: true }]} onSubmit={(v) => createGoal.mutate({ title: v.title.trim(), goal_type: v.goal_type, target_value: v.target_value ? Number(v.target_value) : null, unit: v.unit || null, target_date: v.target_date || null }, { onSuccess: () => setGoalOpen(false) })} />}
     </>

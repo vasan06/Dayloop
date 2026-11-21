@@ -14,6 +14,7 @@ def get_settings() -> dict:
         "auth_mode": os.getenv("DAYLOOP_AUTH_MODE", "firebase").strip().lower(),
         "database_url": os.getenv("DATABASE_URL", ""),
         "firebase_project_id": os.getenv("FIREBASE_PROJECT_ID", ""),
+        "admin_key": os.getenv("DAYLOOP_ADMIN_KEY", "dayloop-admin-local" if os.getenv("DAYLOOP_ENV", "development").strip().lower() == "development" else ""),
         "attachment_root": os.getenv("ATTACHMENT_ROOT", "../storage/attachments"),
         "cors_origins": os.getenv(
             "CORS_ORIGINS",

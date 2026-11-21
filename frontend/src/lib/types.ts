@@ -22,6 +22,7 @@ export type Project = {
   name: string;
   description: string;
   color: string;
+  banner_key: string;
   status: ProjectStatus;
   start_date: string | null;
   due_date: string | null;

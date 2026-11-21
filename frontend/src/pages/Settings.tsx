@@ -1,36 +1,69 @@
 import { useEffect, useState } from "react";
+import { LayoutTemplate, Palette, Play, Type } from "lucide-react";
 import { Card, CardHead, PageHead } from "../components/ui";
 import { setTheme, useTheme } from "../hooks/useTheme";
-import { useProfile, useSaveProfile } from "../hooks/data";
 
-const ROLES: [string, string][] = [["school_student", "School student"], ["student", "College / university student"], ["working", "Working professional"], ["freelancer", "Freelancer"], ["entrepreneur", "Entrepreneur"], ["organization", "Organization"], ["educator", "Educator"], ["other", "Other"]];
+type Preset = "default" | "paper" | "calm" | "mono" | "ocean" | "sunset";
+type Density = "compact" | "comfortable" | "spacious";
+type Motion = "full" | "subtle" | "reduce";
 
-export default function Settings() {
-  const profile = useProfile();
-  const save = useSaveProfile();
-  const [f, setF] = useState({ display_name: "", username: "", age: "", role: "other" });
-  const theme = useTheme();
-  useEffect(() => { const p = profile.data; if (p) setF({ display_name: p.display_name ?? "", username: p.username ?? "", age: p.age ? String(p.age) : "", role: p.role ?? "other" }); }, [profile.data]);
-  const err = save.error instanceof Error ? save.error.message : "";
+const PRESETS: Array<{ id: Preset; name: string; hint: string }> = [
+  { id: "default", name: "DayLoop", hint: "Cobalt + cool neutral" },
+  { id: "paper", name: "Paper", hint: "Warm editorial neutral" },
+  { id: "calm", name: "Calm", hint: "Teal productivity" },
+  { id: "ocean", name: "Ocean", hint: "Blue + cyan contrast" },
+  { id: "sunset", name: "Sunset", hint: "Coral + amber warmth" },
+  { id: "mono", name: "Mono", hint: "Monochrome workspace" },
+];
+const stored = <T extends string>(k:string,f:T):T=>{try{return(localStorage.getItem(k) as T)||f}catch{return f}};
 
-  return (
-    <>
-      <PageHead title="Settings" sub="Profile and appearance" />
-      <div className="g">
-        <Card className="s7">
-          <CardHead title="Profile" />
-          <form onSubmit={(e) => { e.preventDefault(); save.mutate({ ...f, age: Number(f.age) }); }}>
-            <div className="fr"><div className="field"><label htmlFor="s-name">Name</label><input id="s-name" required maxLength={80} value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} /></div>
-              <div className="field"><label htmlFor="s-user">Username</label><input id="s-user" required pattern="[A-Za-z0-9_]{3,24}" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value.toLowerCase() })} /></div></div>
-            <div className="fr"><div className="field"><label htmlFor="s-age">Age</label><input id="s-age" type="number" min={13} max={120} required value={f.age} onChange={(e) => setF({ ...f, age: e.target.value })} /></div>
-              <div className="field"><label htmlFor="s-role">Role</label><select id="s-role" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div></div>
-            <div className="field"><label>Email</label><input value={profile.data?.email ?? ""} disabled /></div>
-            {err && <p className="err" role="alert">{err}</p>}
-            <button className="btn pri" disabled={save.isPending}>{save.isPending ? "Saving…" : "Save profile"}</button>
-          </form>
-        </Card>
-        <Card className="s5"><CardHead title="Appearance" /><div className="tabs">{["system", "light", "dark"].map((t) => <button key={t} className={theme === t ? "on" : ""} aria-pressed={theme === t} onClick={() => setTheme(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}</div><p className="mute sm">System follows your device. Your choice is saved in this browser.</p></Card>
-      </div>
-    </>
-  );
+export default function Settings(){
+  const theme=useTheme();
+  const [preset,setPreset]=useState<Preset>(()=>stored("dayloop:appearance-preset","default"));
+  const [density,setDensity]=useState<Density>(()=>stored("dayloop:density","comfortable"));
+  const [motion,setMotion]=useState<Motion>(()=>stored("dayloop:motion","full"));
+  const [previewKey,setPreviewKey]=useState(0);
+
+  useEffect(()=>{preset==="default"?document.documentElement.removeAttribute("data-preset"):document.documentElement.dataset.preset=preset;try{localStorage.setItem("dayloop:appearance-preset",preset)}catch{}},[preset]);
+  useEffect(()=>{document.documentElement.dataset.density=density;try{localStorage.setItem("dayloop:density",density)}catch{}},[density]);
+  useEffect(()=>{document.documentElement.dataset.motion=motion;try{localStorage.setItem("dayloop:motion",motion)}catch{};setPreviewKey((v)=>v+1)},[motion]);
+
+  return <>
+    <PageHead title="Settings" sub="Shape the workspace around how you like to work" />
+    <div className="settings-layout">
+      <Card className="settings-main">
+        <CardHead title="Appearance" />
+        <div className="settings-section">
+          <div className="settings-label"><Palette className="ic"/><span><b>Color mode</b><small>Choose the surface mode. Every preset has a matching light and dark palette.</small></span></div>
+          <div className="choice-grid three">{(["system","light","dark"] as const).map((item)=><button key={item} className={theme===item?"choice-card active":"choice-card"} onClick={()=>setTheme(item)}><i className={"theme-preview "+item}/><b>{item[0].toUpperCase()+item.slice(1)}</b></button>)}</div>
+        </div>
+        <div className="settings-section">
+          <div className="settings-label"><Type className="ic"/><span><b>Workspace presets</b><small>Preset changes apply immediately and preserve the selected light/dark mode.</small></span></div>
+          <div className="preset-grid">{PRESETS.map((item)=><button key={item.id} className={preset===item.id?"preset active":"preset"} onClick={()=>setPreset(item.id)}><i className={"preset-swatch "+item.id}/><span><b>{item.name}</b><small>{item.hint}</small></span><span className="preset-mini"><i/><i/><i/></span></button>)}</div>
+        </div>
+      </Card>
+
+      <Card className="settings-side">
+        <CardHead title="Interface behavior" />
+        <div className="settings-section">
+          <div className="settings-label"><LayoutTemplate className="ic"/><span><b>Density</b><small>See the difference before choosing it.</small></span></div>
+          <div className="density-options">{(["compact","comfortable","spacious"] as Density[]).map((item)=><button key={item} onClick={()=>setDensity(item)} className={density===item?"density-choice active":"density-choice"}><span className={"density-preview "+item}><i/><i/><i/></span><b>{item[0].toUpperCase()+item.slice(1)}</b></button>)}</div>
+        </div>
+        <div className="settings-section">
+          <div className="settings-label"><span><b>Motion</b><small>Full is expressive, Subtle keeps only useful transitions, Reduced removes almost all motion.</small></span></div>
+          <div className="motion-options">{(["full","subtle","reduce"] as Motion[]).map((item)=><button key={item} className={motion===item?"motion-choice active":"motion-choice"} onClick={()=>setMotion(item)}><span className={"motion-dot "+item}/><b>{item==="reduce"?"Reduced":item[0].toUpperCase()+item.slice(1)}</b></button>)}</div>
+          <button className="btn sm motion-replay" onClick={()=>setPreviewKey((v)=>v+1)}><Play className="ic"/>Replay motion</button>
+          <div key={previewKey} className="motion-preview"><span/><span/><span/></div>
+        </div>
+      </Card>
+
+      <Card className="settings-preview-card">
+        <CardHead mono="LIVE PREVIEW" title="Workspace sample" />
+        <div className="settings-live-preview">
+          <aside><i/><i/><i/><i/></aside>
+          <section><div className="preview-title"/><div className="preview-cards"><i/><i/><i/></div><div className="preview-row"/><div className="preview-row short"/></section>
+        </div>
+      </Card>
+    </div>
+  </>;
 }

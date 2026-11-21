@@ -33,12 +33,13 @@ def post_project(payload: ProjectFields, user: dict = Depends(get_current_user))
     if payload.get("status", "active") not in {"active", "on_hold", "completed"}:
         raise HTTPException(status_code=422, detail="Unsupported project status.")
     project = fetch_one(
-        "INSERT INTO projects (user_id,name,description,color,status,start_date,due_date) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+        "INSERT INTO projects (user_id,name,description,color,banner_key,status,start_date,due_date) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
         (
             user["id"],
             name,
             payload.get("description", ""),
             payload.get("color", "persimmon"),
+            payload.get("banner_key", "aurora"),
             payload.get("status", "active"),
             payload.get("start_date"),
             payload.get("due_date"),
@@ -49,7 +50,7 @@ def post_project(payload: ProjectFields, user: dict = Depends(get_current_user))
 
 @router.patch("/{project_id}")
 def patch_project(project_id: UUID, payload: ProjectFields, user: dict = Depends(get_current_user)) -> dict:
-    allowed = {"name", "description", "color", "status", "start_date", "due_date"}
+    allowed = {"name", "description", "color", "banner_key", "status", "start_date", "due_date"}
     changes = {key: value for key, value in payload.items() if key in allowed}
     if not changes:
         raise HTTPException(status_code=422, detail="No supported project fields were supplied.")

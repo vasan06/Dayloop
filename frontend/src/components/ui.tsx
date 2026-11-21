@@ -102,7 +102,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
 }
 
 export type FieldDef = {
-  name: string; label: string; type?: "text" | "number" | "date" | "time" | "datetime-local" | "textarea" | "select";
+  name: string; label: string; type?: "text" | "number" | "date" | "time" | "datetime-local" | "textarea" | "select" | "banner";
   required?: boolean; options?: [string, string][]; placeholder?: string; half?: boolean; step?: string; min?: number;
 };
 
@@ -111,7 +111,7 @@ export function FormModal({ title, fields, initial = {}, submit = "Save", busy, 
   title: string; fields: FieldDef[]; initial?: Record<string, string>; submit?: string; busy?: boolean;
   onSubmit: (values: Record<string, string>) => void; onClose: () => void;
 }) {
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.name, initial[f.name] ?? (f.type === "select" ? f.options?.[0]?.[0] ?? "" : "")])));
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.name, initial[f.name] ?? ((f.type === "select" || f.type === "banner") ? f.options?.[0]?.[0] ?? "" : "")])));
   const set = (name: string, v: string) => setValues((cur) => ({ ...cur, [name]: v }));
   const handle = (e: FormEvent) => { e.preventDefault(); onSubmit(values); };
   const rows: FieldDef[][] = [];
@@ -129,6 +129,7 @@ export function FormModal({ title, fields, initial = {}, submit = "Save", busy, 
                 <label htmlFor={`f-${f.name}`}>{f.label}{f.required ? " *" : ""}</label>
                 {f.type === "textarea" ? <textarea id={`f-${f.name}`} required={f.required} placeholder={f.placeholder} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)} />
                   : f.type === "select" ? <select id={`f-${f.name}`} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)}>{f.options?.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                  : f.type === "banner" ? <div id={`f-${f.name}`} className="banner-picker">{f.options?.map(([v,l]) => <button key={v} type="button" className={values[f.name]===v ? `banner-option banner-${v} active` : `banner-option banner-${v}`} onClick={() => set(f.name,v)}><span>{l.slice(0,1)}</span><b>{l}</b></button>)}</div>
                   : <input id={`f-${f.name}`} type={f.type ?? "text"} required={f.required} placeholder={f.placeholder} step={f.step} min={f.min} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)} />}
               </div>
             ))}
@@ -187,20 +188,35 @@ export function GlobalFx() {
   return <div className="tip" ref={tip} role="tooltip" />;
 }
 
-export function confetti(origin?: HTMLElement | null) {
+export function confetti(_origin?: HTMLElement | null) {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const rect = origin?.getBoundingClientRect();
-  const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-  const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-  const colors = ["var(--acc)", "var(--amber)", "var(--green)", "var(--rose)", "var(--violet)"];
-  for (let i = 0; i < 26; i++) {
-    const p = document.createElement("i");
-    const angle = Math.random() * Math.PI * 2, dist = 60 + Math.random() * 90;
-    Object.assign(p.style, { position: "fixed", left: `${cx}px`, top: `${cy}px`, width: "7px", height: "7px", borderRadius: i % 2 ? "50%" : "2px", background: colors[i % colors.length], zIndex: "600", pointerEvents: "none" });
-    document.body.appendChild(p);
-    const anim = p.animate([{ transform: "translate(0,0) scale(1)", opacity: 1 }, { transform: `translate(${Math.cos(angle) * dist}px,${Math.sin(angle) * dist + 60}px) rotate(${Math.random() * 540}deg) scale(.5)`, opacity: 0 }], { duration: 800 + Math.random() * 400, easing: "cubic-bezier(.2,.8,.3,1)" });
-    anim.onfinish = () => p.remove();
-  }
+  const cx = window.innerWidth / 2;
+  const startY = window.innerHeight + 34;
+  const centerY = window.innerHeight * 0.48;
+  const colors = ["var(--acc)", "var(--amber)", "var(--green)", "var(--rose)", "var(--violet)", "#fff"];
+  const core = document.createElement("div");
+  Object.assign(core.style, { position:"fixed", left:`${cx-28}px`, top:`${startY}px`, width:"56px", height:"56px", borderRadius:"50%", background:"var(--acc)", zIndex:"850", pointerEvents:"none", boxShadow:"0 0 40px color-mix(in srgb,var(--acc) 55%,transparent)" });
+  document.body.appendChild(core);
+  const launch = core.animate([
+    { transform:"translateY(0) scale(.55)", opacity:.15 },
+    { transform:`translateY(${centerY-startY}px) scale(1.2)`, opacity:1, offset:.72 },
+    { transform:`translateY(${centerY-startY}px) scale(1.75)`, opacity:0 }
+  ], { duration:760, easing:"cubic-bezier(.18,.85,.2,1)" });
+  launch.onfinish = () => core.remove();
+  window.setTimeout(() => {
+    for (let i=0;i<72;i++) {
+      const p=document.createElement("i");
+      const angle=Math.random()*Math.PI*2, dist=110+Math.random()*210;
+      const size=6+Math.random()*8;
+      Object.assign(p.style,{position:"fixed",left:`${cx}px`,top:`${centerY}px`,width:`${size}px`,height:`${Math.max(4,size*.55)}px`,borderRadius:i%3===0?"50%":"3px",background:colors[i%colors.length],zIndex:"851",pointerEvents:"none"});
+      document.body.appendChild(p);
+      const anim=p.animate([
+        {transform:"translate(0,0) rotate(0) scale(.4)",opacity:1},
+        {transform:`translate(${Math.cos(angle)*dist}px,${Math.sin(angle)*dist + 100}px) rotate(${360+Math.random()*720}deg) scale(1)`,opacity:0}
+      ],{duration:1100+Math.random()*900,easing:"cubic-bezier(.12,.75,.22,1)"});
+      anim.onfinish=()=>p.remove();
+    }
+  },520);
 }
 
 export function useCountUp(target: number, duration = 900): number {

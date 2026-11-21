@@ -1,13 +1,14 @@
-import { lazy, useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "../lib/toast";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import AuthGate from "./AuthGate";
 import Shell from "../components/Shell";
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Tasks = lazy(() => import("../pages/Tasks"));
 const Projects = lazy(() => import("../pages/Projects"));
 const Habits = lazy(() => import("../pages/Habits"));
+const Focus = lazy(() => import("../pages/Focus"));
 const Finance = lazy(() => import("../pages/Finance"));
 const Notes = lazy(() => import("../pages/Notes"));
 const Calendar = lazy(() => import("../pages/Calendar"));
@@ -21,18 +22,21 @@ const TaskDetail = lazy(() => import("../pages/TaskDetail"));
 const ProjectDetail = lazy(() => import("../pages/ProjectDetail"));
 const Transactions = lazy(() => import("../pages/Transactions"));
 const Budgets = lazy(() => import("../pages/Budgets"));
+const Admin = lazy(() => import("../pages/Admin"));
 
 function WorkspaceSession({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({
     mutationCache: new MutationCache({
       onError: (error) => toast(error instanceof Error ? error.message : "Something went wrong.", "error"),
     }),
-    defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } },
+    defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: false, retry: 1 } },
   }));
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
 export default function App() {
+  const location = useLocation();
+  if (location.pathname.startsWith("/admin")) return <Suspense fallback={<div className="boot">Opening admin…</div>}><Admin /></Suspense>;
   return (
     <AuthGate>
       {(signOut, identity) => (
@@ -45,6 +49,7 @@ export default function App() {
             <Route path="projects" element={<Projects />} />
             <Route path="projects/:id" element={<ProjectDetail />} />
             <Route path="habits" element={<Habits />} />
+            <Route path="focus" element={<Focus />} />
             <Route path="trackers" element={<Trackers />} />
             <Route path="finance" element={<Finance />} />
             <Route path="transactions" element={<Transactions />} />

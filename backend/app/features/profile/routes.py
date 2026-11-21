@@ -21,8 +21,8 @@ def get_profile(user: dict = Depends(get_current_user)) -> dict:
 
 @router.put("")
 def update_profile(payload: dict, user: dict = Depends(get_current_user)) -> dict:
-    name = str(payload.get("display_name", "")).strip()
     username = str(payload.get("username", "")).strip().lower()
+    name = str(payload.get("display_name", username)).strip() or username
     role = str(payload.get("role", "")).strip()
     try:
         age = int(payload.get("age"))

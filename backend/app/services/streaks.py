@@ -37,6 +37,9 @@ def habit_is_scheduled(day: date, schedule_type: str, schedule_config: dict) -> 
 
 
 def measurable_status(value: float | None, target: float | None, target_type: str) -> str:
+    if target == 0:
+        # Zero-target habits are avoidance habits: zero is success, any occurrence is failure.
+        return "completed" if (value or 0) == 0 else "failed"
     if value is None:
         return "missed"
     if target is None:

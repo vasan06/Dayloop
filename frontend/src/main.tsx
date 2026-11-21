@@ -5,6 +5,14 @@ import App from "./app/App";
 import "./styles/app.css";
 import "./styles/quality.css";
 
+try {
+  const root = document.documentElement;
+  const preset = localStorage.getItem("dayloop:appearance-preset");
+  if (preset && preset !== "default") root.dataset.preset = preset;
+  root.dataset.density = localStorage.getItem("dayloop:density") || "comfortable";
+  root.dataset.motion = localStorage.getItem("dayloop:motion") || "full";
+} catch { /* Browser storage can be unavailable in private modes. */ }
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>

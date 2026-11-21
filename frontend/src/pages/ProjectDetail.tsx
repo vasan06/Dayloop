@@ -34,7 +34,7 @@ import {
   useUpdateTask,
 } from "../hooks/data";
 import { isOverdue } from "../lib/derive";
-import { priorityLabel, shortDate, toneOf } from "../lib/format";
+import { priorityLabel, shortDate } from "../lib/format";
 import type { Project, Task, TaskPriority, TaskStatus } from "../lib/types";
 
 const STATUS_OPTIONS: [string, string][] = [
@@ -42,14 +42,7 @@ const STATUS_OPTIONS: [string, string][] = [
   ["on_hold", "On hold"],
   ["completed", "Completed"],
 ];
-
-const TONE_GRADIENTS: Record<string, [string, string]> = {
-  butter: ["#443610", "#1e1807"],
-  mint: ["#0f4327", "#061c10"],
-  sky: ["#123661", "#08182f"],
-  blush: ["#511d24", "#230b0f"],
-  lilac: ["#391f63", "#190d2e"],
-};
+const BANNER_OPTIONS: [string,string][] = [["aurora","Aurora"],["ocean","Ocean"],["sunset","Sunset"],["forest","Forest"],["violet","Violet"],["graphite","Graphite"],["citrus","Citrus"],["skyline","Skyline"]];
 
 const PRI_CLASS: Record<TaskPriority, string> = { urgent: "hi", high: "hi", normal: "md", low: "lo" };
 
@@ -115,12 +108,10 @@ export default function ProjectDetail() {
     );
   }
 
-  const tone = toneOf(project.id);
-  const grad = TONE_GRADIENTS[tone] ?? ["#1b1e27", "#0f1014"];
-
   const projectFields: FieldDef[] = [
     { name: "name", label: "Project name", required: true },
     { name: "description", label: "Description", type: "textarea" },
+    { name: "banner_key", label: "Project banner", type: "banner", options: BANNER_OPTIONS },
     { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, half: true },
     { name: "due_date", label: "Deadline", type: "date", half: true },
   ];
@@ -144,6 +135,7 @@ export default function ProjectDetail() {
         id: project.id,
         name: v.name.trim(),
         description: v.description,
+        banner_key: v.banner_key || "aurora",
         status: v.status as Project["status"],
         due_date: v.due_date ? v.due_date : null,
       },
@@ -189,9 +181,8 @@ export default function ProjectDetail() {
 
       {/* Gradient Hero Banner */}
       <div
-        className="hero"
+        className={`hero project-detail-hero banner-${project.banner_key || "aurora"}`}
         style={{
-          background: `linear-gradient(120deg, ${grad[0]}, ${grad[1]})`,
           borderRadius: 28,
           border: "1px solid rgba(255,255,255,0.1)",
           marginBottom: 20,
@@ -478,6 +469,7 @@ export default function ProjectDetail() {
           initial={{
             name: project.name,
             description: project.description,
+            banner_key: project.banner_key || "aurora",
             status: project.status,
             due_date: project.due_date?.slice(0, 10) ?? "",
           }}

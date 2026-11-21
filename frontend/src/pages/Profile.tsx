@@ -43,11 +43,8 @@ export default function Profile() {
       {profile.isLoading ? <div className="g profile-page"><Card className="s7"><Skeleton rows={5} /></Card><Card className="s5"><Skeleton rows={3} /></Card></div> : profile.isError ? <ErrorBox error={profile.error} retry={() => void profile.refetch()} /> : <div className="g profile-page">
         <Card className="s7">
           <CardHead title="Personal information" />
-          <form onSubmit={(e) => { e.preventDefault(); save.mutate({ ...f, age: Number(f.age) }); }}>
-            <div className="fr">
-              <div className="field"><label htmlFor="profile-name">Name</label><input id="profile-name" required maxLength={80} value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} /></div>
-              <div className="field"><label htmlFor="profile-username">Username</label><input id="profile-username" required minLength={3} maxLength={24} pattern="[A-Za-z0-9_]{3,24}" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value.toLowerCase() })} /></div>
-            </div>
+          <form onSubmit={(e) => { e.preventDefault(); save.mutate({ ...f, display_name: f.username, age: Number(f.age) }); }}>
+            <div className="field"><label htmlFor="profile-username">Username</label><input id="profile-username" required minLength={3} maxLength={24} pattern="[A-Za-z0-9_]{3,24}" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value.toLowerCase(), display_name: e.target.value.toLowerCase() })} /></div>
             <div className="fr">
               <div className="field"><label htmlFor="profile-age">Age</label><input id="profile-age" type="number" min={13} max={120} required value={f.age} onChange={(e) => setF({ ...f, age: e.target.value })} /></div>
               <div className="field"><label htmlFor="profile-role">Role</label><select id="profile-role" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
