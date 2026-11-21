@@ -12,6 +12,7 @@ import { setTheme, useTheme } from "../hooks/useTheme";
 import { Modal, Toaster } from "./ui";
 import { AxisBars } from "./InteractiveCharts";
 import { apiRequest } from "../lib/api";
+import { alertPermission, nativeAlerts, requestAlertPermission, scheduleUpcomingAlerts, showAlert, type AlertPermission } from "../lib/notifications";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -48,7 +49,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   const [entered, setEntered] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
-  const [permission, setPermission] = useState(() => typeof Notification === "undefined" ? "denied" : Notification.permission);
+  const [permission, setPermission] = useState<AlertPermission>("default");
   const delivered = useRef(new Set<string>());
   const [streakOpen, setStreakOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -111,19 +112,18 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   }, []);
 
   useEffect(() => {
+    void alertPermission().then(setPermission);
+    const refresh = () => { void alertPermission().then(setPermission); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, []);
+
+  useEffect(() => {
     const notifyFocus = async (title: string, body: string) => {
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try {
-          if ("serviceWorker" in navigator) {
-            const registration = await navigator.serviceWorker.getRegistration("/");
-            if (registration) {
-              await registration.showNotification(title, { body, tag: "dayloop-focus", requireInteraction: true });
-              return;
-            }
-          }
-          new Notification(title, { body, tag: "dayloop-focus" });
-          return;
-        } catch { /* fall through to in-app toast */ }
+      if (await alertPermission() === "granted") {
+        try { await showAlert(title, body, "dayloop-focus:" + Date.now()); return; }
+        catch { /* fall through to in-app toast */ }
       }
       toast(`${title}: ${body}`);
     };
@@ -174,8 +174,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
     function deliver(key: string, label: string, title: string) {
       if (delivered.current.has(key)) return;
       delivered.current.add(key);
-      try { new Notification(label, { body: title, tag: key }); }
-      catch { toast(`${label}: ${title}`); }
+      void showAlert(label, title, key).catch(() => { toast(`${label}: ${title}`); });
     }
     function checkDue() {
       const now = Date.now();
@@ -193,13 +192,28 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
       if (previousSize !== delivered.current.size) safeSet(storageKey, JSON.stringify([...delivered.current]));
     }
     checkDue();
+    if (nativeAlerts) {
+      const future = [
+        ...(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && task.status !== "completed" && task.status !== "cancelled").map((task) => ({
+          key: `task:${task.id}:${task.due_at}`, title: "Task due", body: task.title, when: Date.parse(task.due_at!),
+        })),
+        ...(notificationCenter.data?.events ?? []).map((event) => ({
+          key: `event:${event.id}:${event.start_at}`, title: "Calendar event", body: event.title, when: Date.parse(event.start_at),
+        })),
+      ];
+      void scheduleUpcomingAlerts(future).catch(() => {});
+    }
     const timer = window.setInterval(checkDue, 30_000);
     return () => window.clearInterval(timer);
   }, [identity, notificationCenter.data, permission]);
 
   async function enableAlerts() {
-    try { setPermission(await Notification.requestPermission()); }
-    catch { toast("This browser could not enable notifications.", "error"); }
+    try {
+      const result = await requestAlertPermission();
+      setPermission(result);
+      if (result === "granted") toast("Notifications enabled");
+      else toast(nativeAlerts ? "Allow DayLoop notifications in Android app settings." : "Allow notifications in your browser settings.", "error");
+    } catch { toast("Could not request notification permission.", "error"); }
   }
 
   async function submitFeedback(event: FormEvent<HTMLFormElement>) {
@@ -323,7 +337,8 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
             </button>
             {notificationsOpen && <div className="notification-center" role="dialog" aria-label="Notification center">
               <div className="notification-center-head"><b>Notifications</b><button className="notification-read-all" onClick={() => markAllRead.mutate(undefined as never)} disabled={markAllRead.isPending || unreadCount === 0}><CheckCheck className="ic" />{unreadCount ? "Mark all read" : "All caught up"}</button></div>
-              {permission === "default" && <button className="btn sm" onClick={() => void enableAlerts()}>Enable browser alerts</button>}
+              {permission !== "granted" && <button className="btn sm" onClick={() => void enableAlerts()}>{nativeAlerts ? "Enable Android notifications" : "Enable browser alerts"}</button>}
+              {permission === "denied" && <p className="mute sm">{nativeAlerts ? "If permission was previously denied, open Android Settings → Apps → DayLoop → Notifications to allow alerts." : "Notifications are blocked. Change permission in browser site settings."}</p>}
               <div className="notification-section"><b>Now</b>
                 {(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && new Date(task.due_at) <= new Date()).slice(0, 8).map((task) => <button key={`task-${task.id}`} className="notification-row is-overdue" onClick={() => navigate(`/tasks/${task.id}`)}><span className="notification-kind">Due</span><span><b>{task.title}</b><small>{task.due_at ? `Overdue · ${new Date(task.due_at).toLocaleString()}` : "Due now"}</small></span></button>)}
               </div>
