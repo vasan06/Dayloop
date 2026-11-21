@@ -1,5 +1,5 @@
-import { addDays, dayKey, isoDate, num } from "./format";
-import type { FinanceSummary, Task } from "./types";
+import { addDays, dayKey, isoDate, money, num } from "./format";
+import type { FinanceSummary, InsightDay, Task } from "./types";
 
 export const isOpen = (t: Task): boolean => t.status !== "completed" && t.status !== "cancelled";
 export const isOverdue = (t: Task): boolean => isOpen(t) && t.due_at !== null && Date.parse(t.due_at) < Date.now();
@@ -32,3 +32,11 @@ export function lastDays(n: number): Date[] {
   const today = new Date();
   return Array.from({ length: n }, (_, i) => addDays(today, i - (n - 1)));
 }
+
+export function largestTransaction(day: InsightDay, type: "income" | "expense") {
+  const value = type === "income" ? day.largest_income : day.largest_expense;
+  if (value == null) return "";
+  const description = type === "income" ? day.income_description : day.expense_description;
+  return `Largest ${type}: ${money(value)}${description ? " (" + description + ")" : ""}.`;
+}
+export const includesRecord = (name?: string | null) => name ? `Includes ${name}.` : "";

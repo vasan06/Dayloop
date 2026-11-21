@@ -27,20 +27,26 @@ export default function Landing({ onSignIn, onSignUp }: { onSignIn: () => void; 
 
         <section className="planner-preview" aria-label="Interactive sample planner">
           <div className="planner-binding" aria-hidden="true" />
-          <div className="planner-page">
-            <div className="planner-date"><CalendarDays size={17} /> {date}</div>
-            <div className="planner-topline"><h2>Today</h2><span>72% on track</span></div>
-            <div className="planner-heading"><h3>Priority tasks</h3><span aria-live="polite">{completed.filter(Boolean).length} of 3 done</span></div>
-            <ul>{sampleTasks.map((title, index) => (
-              <li key={title}><button aria-pressed={completed[index]} onClick={() => setCompleted((current) => current.map((done, i) => i === index ? !done : done))}>
-                <span className="planner-check">{completed[index] && <Check size={15} />}</span>{title}
-              </button></li>
-            ))}</ul>
-            <div className="planner-mini-grid">
-              <div><Repeat /><span><b>4/5</b><small>habits</small></span></div>
-              <div><TimerReset /><span><b>50m</b><small>focus</small></span></div>
+          <div className="planner-frame">
+            <div className="planner-preview-bar">
+              <span className="planner-preview-dots" aria-hidden="true"><i /><i /><i /></span>
+              <span className="mono">LIVE DAY</span>
             </div>
-            <div className="planner-appointment"><time>14:30</time><div><b>Design review</b><small>Calendar · 45 minutes</small></div></div>
+            <div className="planner-page">
+              <div className="planner-date"><CalendarDays size={17} /> {date}</div>
+              <div className="planner-topline"><h2>Today</h2><span>72% on track</span></div>
+              <div className="planner-heading"><h3>Priority tasks</h3><span aria-live="polite">{completed.filter(Boolean).length} of 3 done</span></div>
+              <ul>{sampleTasks.map((title, index) => (
+                <li key={title}><button aria-pressed={completed[index]} onClick={() => setCompleted((current) => current.map((done, i) => i === index ? !done : done))}>
+                  <span className="planner-check">{completed[index] && <Check size={15} />}</span><span>{title}</span>
+                </button></li>
+              ))}</ul>
+              <div className="planner-mini-grid">
+                <div><Repeat /><span><b>4/5</b><small>habits checked</small></span></div>
+                <div><TimerReset /><span><b>50m</b><small>focused today</small></span></div>
+              </div>
+              <div className="planner-appointment"><time>14:30</time><div><b>Design review</b><small>Calendar · 45 minutes</small></div><span className="planner-appointment-tag">45m</span></div>
+            </div>
           </div>
         </section>
       </main>

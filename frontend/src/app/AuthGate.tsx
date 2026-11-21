@@ -332,16 +332,14 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
     </div>
   );
   const shell = (content: ReactNode) => (
-    <main className="auth auth-v2">
+    <main className={`auth auth-v2 auth-mode-${mode}`}>
       <section className="l">
         <div className="fw">{content}</div>
       </section>
       <aside className="r auth-demo" aria-label="Interactive DayLoop product demonstration">
-        <div className="auth-aside-top"><Logo /><span className="mono">YOUR WORKSPACE</span></div>
+        <div className="auth-aside-top"><Logo /></div>
         <div className="auth-aside-content">
-          <div className={`auth-preview-heading auth-preview-${mode}`}>
-            <div><span className="mono">{mode === "signup" ? "BUILD YOUR LOOP" : mode === "signin" ? "WELCOME BACK" : "YOUR WORKSPACE"}</span><h2>{mode === "signup" ? "Start simple. Grow with your day." : mode === "signin" ? "Everything you left is still in motion." : "Make room for what matters."}</h2><p>{mode === "signup" ? "Create the account on the left, then shape tasks, habits, focus and money from one connected workspace." : mode === "signin" ? "Preview the tools waiting inside while you sign back in." : "One connected workspace for the moving parts of your day."}</p></div>
-          </div>
+
           <div className="auth-demo-tabs" role="tablist" aria-label="Explore DayLoop features">
             {([["tasks","Tasks"],["habits","Habits"],["focus","Focus"],["finance","Finance"]] as const).map(([key,label]) => <button type="button" role="tab" aria-selected={demoView===key} className={demoView===key?"active":""} key={key} onClick={()=>setDemoView(key)}>{label}</button>)}
           </div>
@@ -366,9 +364,8 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
               <form className="demo-live-add" onSubmit={(event) => { event.preventDefault(); const amount = Number(demoFinanceInput); if (amount) setDemoTransactions((items) => [...items, amount]); setDemoFinanceInput(""); }}><input aria-label="Income or expense amount" type="number" value={demoFinanceInput} onChange={(event) => setDemoFinanceInput(event.target.value)} placeholder="Use negative for expense" /><button type="submit">Add</button></form>
             </div>}
           </div>
-          <div className="auth-demo-foot"><span className="auth-note-mark"><Logo light={false} /></span><div><b>One workspace. Your whole day.</b><small>Explore the real tools once you’re inside.</small></div><span className="demo-pagination">{["tasks","habits","focus","finance"].indexOf(demoView)+1} / 4</span></div>
+          <div className="demo-pagination">{["tasks","habits","focus","finance"].indexOf(demoView)+1} / 4</div>
         </div>
-        <p className="auth-aside-footer">Plan with intention. Make progress visible.</p>
       </aside>
     </main>
   );
@@ -468,7 +465,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
     {error&&<p className="err" role="alert">{error}</p>}
     <button className="btn pri auth-submit" disabled={!firebaseAuth||busy||!passwordMatches||password.length<8}>{busy?"Creating workspace…":"Create account"}</button>
     {firebaseAuth&&<button type="button" className="btn auth-google" disabled={busy} onClick={()=>void signInWithGoogle()}><GoogleMark/>Create with Google</button>}
-    <div className="signup-foot"><button type="button" className="lnk acc" onClick={()=>{setMode("signin");setPassword("");setConfirmPassword("");setError("")}}>Already have an account? Sign in</button><button type="button" className="lnk" onClick={()=>setMode("landing")}>Back to DayLoop</button></div>
+    <div className="signup-foot"><button type="button" className="lnk acc" onClick={()=>{setMode("signin");setPassword("");setConfirmPassword("");setError("")}}>Already have an account? Sign in</button></div>
   </form>);
 
   return shell(<form className="auth-form auth-form-forgot" onSubmit={submitAuth}>

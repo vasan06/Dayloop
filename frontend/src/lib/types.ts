@@ -76,9 +76,9 @@ export type Tracker = {
   metric_type: "number" | "duration" | "boolean";
   frequency: "daily" | "weekly" | "monthly";
   unit: string | null;
-  target_value: number | null;
+  target_value: number | string | null;
 };
-export type TrackerEntry = { id: string; recorded_at: string; numeric_value: number | null; notes: string };
+export type TrackerEntry = { id: string; recorded_at: string; numeric_value: number | string | null; notes: string };
 export type NoteBlock = { id?: string; block_type: string; content: { text?: string }; position?: number };
 
 export type Transaction = {
@@ -120,11 +120,12 @@ export type Goal = {
   target_value: number | string | null;
   current_value: number | string;
   unit: string | null;
+  start_date: string | null;
   target_date: string | null;
   status: string;
 };
 
-export type CalendarEvent = { id: string; title: string; description: string; start_at: string; end_at: string };
+export type CalendarEvent = { id: string; title: string; description: string; start_at: string; end_at: string; completed_at?: string | null };
 export type SearchResult = { entity_type: "task" | "project" | "note" | "habit" | "goal"; id: string; title: string; detail: string };
 
 export type Profile = {
@@ -149,6 +150,16 @@ export type InsightDay = {
   projects_created: number;
   events_count: number;
   notes_created: number;
+  completed_task?: string | null;
+  created_task?: string | null;
+  completed_habit?: string | null;
+  created_project?: string | null;
+  scheduled_event?: string | null;
+  created_note?: string | null;
+  largest_income?: number | string | null;
+  income_description?: string | null;
+  largest_expense?: number | string | null;
+  expense_description?: string | null;
 };
 export type Insights = {
   days: number;

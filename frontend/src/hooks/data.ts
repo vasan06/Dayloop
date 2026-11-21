@@ -33,9 +33,15 @@ export const useTrackers = () => useQuery({ queryKey: keys.trackers, queryFn: it
 export const useTrackerEntries = (id: string) => useQuery({
   queryKey: ["tracker-entries", id], queryFn: items<TrackerEntry>(`/trackers/${id}/entries`),
 });
+type TrackerInput = Omit<Tracker, "id" | "frequency" | "metric_type"> & { frequency: string; metric_type: string };
 export const useCreateTracker = () =>
-  useAction((tracker: Omit<Tracker, "id" | "frequency" | "metric_type"> & { frequency: string; metric_type: string }) =>
+  useAction((tracker: TrackerInput) =>
     apiRequest("/trackers", { method: "POST", ...json(tracker) }), [keys.trackers], "Tracker created");
+export const useUpdateTracker = () =>
+  useAction(({ id, ...changes }: TrackerInput & { id: string }) =>
+    apiRequest(`/trackers/${id}`, { method: "PATCH", ...json(changes) }), [keys.trackers], "Tracker updated");
+export const useArchiveTracker = () =>
+  useAction((id: string) => apiRequest(`/trackers/${id}`, { method: "DELETE" }), [keys.trackers], "Tracker archived");
 export const useAddTrackerEntry = () => useAction(({ id, ...entry }: { id: string; numeric_value: number; notes: string }) =>
   apiRequest(`/trackers/${id}/entries`, { method: "POST", ...json(entry) }), [["tracker-entries"]], "Entry recorded");
 export const useSummary = () => useQuery({ queryKey: keys.summary, queryFn: () => apiRequest<FinanceSummary>("/finance/summary") });
@@ -155,13 +161,21 @@ export const useCreateBudget = () =>
 export const useCreateSavings = () =>
   useAction((v: Record<string, unknown>) => apiRequest("/finance/savings", { method: "POST", ...json(v) }), [keys.savings], "Savings goal created");
 
+const goalQueries = [keys.goals, ["search"]];
 export const useCreateGoal = () =>
-  useAction((v: Record<string, unknown>) => apiRequest("/goals", { method: "POST", ...json(v) }), [keys.goals], "Goal created");
+  useAction((v: Partial<Goal>) => apiRequest("/goals", { method: "POST", ...json(v) }), goalQueries, "Goal created");
 export const useUpdateGoal = () =>
-  useAction((v: { id: string } & Record<string, unknown>) => { const { id, ...rest } = v; return apiRequest(`/goals/${id}`, { method: "PATCH", ...json(rest) }); }, [keys.goals]);
+  useAction(({ id, ...changes }: { id: string } & Partial<Goal>) =>
+    apiRequest(`/goals/${id}`, { method: "PATCH", ...json(changes) }), goalQueries, "Goal updated");
+export const useIncrementGoal = () =>
+  useAction((id: string) => apiRequest(`/goals/${id}/increment`, { method: "POST" }), goalQueries, "Progress recorded");
+export const useDeleteGoal = () =>
+  useAction((id: string) => apiRequest(`/goals/${id}`, { method: "DELETE" }), goalQueries, "Goal deleted");
 
 export const useCreateEvent = () =>
   useAction((v: Record<string, unknown>) => apiRequest("/calendar/events", { method: "POST", ...json(v) }), [keys.events, ["notification-center"]], "Event added");
+export const useUpdateEvent = () =>
+  useAction((v: { id: string; completed: boolean }) => apiRequest(`/calendar/events/${v.id}`, { method: "PATCH", ...json({ completed: v.completed }) }), [keys.events, ["notification-center"]]);
 export const useDeleteEvent = () =>
   useAction((id: string) => apiRequest(`/calendar/events/${id}`, { method: "DELETE" }), [keys.events, ["notification-center"]], "Event deleted");
 

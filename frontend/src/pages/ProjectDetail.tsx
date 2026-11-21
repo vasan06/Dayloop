@@ -42,7 +42,7 @@ const STATUS_OPTIONS: [string, string][] = [
   ["on_hold", "On hold"],
   ["completed", "Completed"],
 ];
-const BANNER_OPTIONS: [string,string][] = [["aurora","Aurora"],["ocean","Ocean"],["sunset","Sunset"],["forest","Forest"],["violet","Violet"],["graphite","Graphite"],["citrus","Citrus"],["skyline","Skyline"]];
+const BANNER_OPTIONS: [string,string][] = [["aurora","Aurora"],["ocean","Ocean"],["sunset","Sunset"],["forest","Forest"],["violet","Violet"],["graphite","Graphite"],["citrus","Citrus"],["skyline","Skyline"],["coral","Coral"],["indigo","Indigo"],["mint","Mint"],["mono","Mono"],["grid","Grid"],["dots","Dots"],["orbit","Orbit"]];
 
 const PRI_CLASS: Record<TaskPriority, string> = { urgent: "hi", high: "hi", normal: "md", low: "lo" };
 
@@ -140,7 +140,7 @@ export default function ProjectDetail() {
         due_date: v.due_date ? v.due_date : null,
       },
       {
-        onSuccess: () => setIsEditing(false),
+        onSuccess: () => { if (project.status !== "completed" && v.status === "completed") confetti(); setIsEditing(false); },
       }
     );
   };
@@ -239,7 +239,7 @@ export default function ProjectDetail() {
             Project Progress
           </div>
           <div style={{ maxWidth: 170, margin: "0 auto" }}>
-            <Gauge value={pct} label="Completed" />
+            <Gauge value={pct} label="Completed" detail={totalTasks ? `${doneTasks} of ${totalTasks} project tasks completed.` : `No tasks. Project status is ${project.status}.`} />
           </div>
           <div className="row sb sm" style={{ color: "rgba(255,255,255,0.85)", marginTop: 6 }}>
             <span>
@@ -293,8 +293,7 @@ export default function ProjectDetail() {
                             id: t.id,
                             status: nextStatus,
                             completed_at: isDone ? null : new Date().toISOString(),
-                          });
-                          if (!isDone) confetti();
+                          }, { onSuccess: () => { if (!isDone) confetti(); } });
                         }}
                       />
 
@@ -353,7 +352,7 @@ export default function ProjectDetail() {
                 <span className="mute">Overall Completion</span>
                 <b className="mono">{Math.round(pct)}%</b>
               </div>
-              <Progress value={pct} />
+              <Progress value={pct} label={project.name} detail={totalTasks ? `${doneTasks} of ${totalTasks} project tasks completed.` : `No tasks. Project status is ${project.status}.`} />
             </div>
 
             <div

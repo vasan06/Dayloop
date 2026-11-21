@@ -20,3 +20,19 @@ analytics:
 10. in dashboard we have notification button while cliking it shows only text as notificetion but that is not its job so collect all current and upcoming even details evenremainders simpley act like android notification system
 
 11. while clicking the streaks icon in sidebar it must show all habits individual and combained streak scrte with date and time and then it must show how many consecutive dayzstreak maintained when breaks and when it resumes kind of details
+
+
+
+
+
+
+
+
+
+
+new:
+
+here after do not give this musch of infomation at once so shroink and tellonly essentials, objectiosn, alternatives kind of essentials ones so save it in memory not only in this project it is for globally this account
+so i can create that file and using actions i get that apk file right? no hosting the backend and db right?
+tell me still the same firebase will work right?
+or better we can create mobile dir in tihs to store all files for mobile in that easy for maintain and also for release and other purpose tell the efficient one,

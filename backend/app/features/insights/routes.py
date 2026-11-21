@@ -20,26 +20,57 @@ def get_overview(
     )["tz"]
     timezone = timezone_for_stored_value(timezone).key
     series = fetch_all(
-        "WITH d AS (SELECT (now() AT TIME ZONE %(tz)s)::date - g AS day "
-        "FROM generate_series(%(days)s - 1, 0, -1) AS g) "
-        "SELECT d.day, "
-        "(SELECT COUNT(*) FROM tasks t WHERE t.user_id=%(u)s AND t.deleted_at IS NULL "
-        " AND (t.completed_at AT TIME ZONE %(tz)s)::date = d.day) AS tasks_completed, "
-        "(SELECT COUNT(*) FROM tasks t WHERE t.user_id=%(u)s AND t.deleted_at IS NULL "
-        " AND (t.created_at AT TIME ZONE %(tz)s)::date = d.day) AS tasks_created, "
-        "(SELECT COUNT(*) FROM habit_entries e JOIN habits h ON h.id=e.habit_id "
-        " WHERE h.user_id=%(u)s AND e.status='completed' AND e.entry_date = d.day) AS habits_done, "
-        "COALESCE((SELECT SUM(amount) FROM finance_transactions f WHERE f.user_id=%(u)s "
-        " AND f.currency='INR' AND f.voided_at IS NULL AND f.transaction_type='income' AND f.transaction_date = d.day),0) AS income, "
-        "COALESCE((SELECT SUM(amount) FROM finance_transactions f WHERE f.user_id=%(u)s "
-        " AND f.currency='INR' AND f.voided_at IS NULL AND f.transaction_type='expense' AND f.transaction_date = d.day),0) AS expenses "
-        ",(SELECT COUNT(*) FROM projects p WHERE p.user_id=%(u)s AND p.archived_at IS NULL "
-        " AND (p.created_at AT TIME ZONE %(tz)s)::date = d.day) AS projects_created "
-        ",(SELECT COUNT(*) FROM calendar_events c WHERE c.user_id=%(u)s "
-        " AND (c.start_at AT TIME ZONE %(tz)s)::date = d.day) AS events_count "
-        ",(SELECT COUNT(*) FROM note_pages n WHERE n.user_id=%(u)s AND n.deleted_at IS NULL "
-        " AND (n.created_at AT TIME ZONE %(tz)s)::date = d.day) AS notes_created "
-        "FROM d ORDER BY d.day",
+        """
+        WITH days AS (
+            SELECT (now() AT TIME ZONE %(tz)s)::date - g AS day
+            FROM generate_series(%(days)s - 1, 0, -1) AS g
+        )
+        SELECT d.day, completed.n AS tasks_completed, created.n AS tasks_created,
+               habits.n AS habits_done, projects.n AS projects_created, events.n AS events_count, notes.n AS notes_created,
+               COALESCE(income.total, 0) AS income, COALESCE(expenses.total, 0) AS expenses,
+               completed.example AS completed_task, created.example AS created_task, habits.example AS completed_habit,
+               projects.example AS created_project, events.example AS scheduled_event, notes.example AS created_note,
+               income.largest AS largest_income, income.description AS income_description,
+               expenses.largest AS largest_expense, expenses.description AS expense_description
+        FROM days d
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS n, min(t.title) AS example FROM tasks t
+            WHERE t.user_id=%(u)s AND t.deleted_at IS NULL AND (t.completed_at AT TIME ZONE %(tz)s)::date = d.day
+        ) completed
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS n, min(t.title) AS example FROM tasks t
+            WHERE t.user_id=%(u)s AND t.deleted_at IS NULL AND (t.created_at AT TIME ZONE %(tz)s)::date = d.day
+        ) created
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS n, min(h.name) AS example FROM habit_entries e JOIN habits h ON h.id=e.habit_id
+            WHERE h.user_id=%(u)s AND e.status='completed' AND e.entry_date = d.day
+        ) habits
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS n, min(p.name) AS example FROM projects p
+            WHERE p.user_id=%(u)s AND p.archived_at IS NULL AND (p.created_at AT TIME ZONE %(tz)s)::date = d.day
+        ) projects
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS n, min(c.title) AS example FROM calendar_events c
+            WHERE c.user_id=%(u)s AND (c.start_at AT TIME ZONE %(tz)s)::date = d.day
+        ) events
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS n, min(n.title) AS example FROM note_pages n
+            WHERE n.user_id=%(u)s AND n.deleted_at IS NULL AND (n.created_at AT TIME ZONE %(tz)s)::date = d.day
+        ) notes
+        CROSS JOIN LATERAL (
+            SELECT sum(f.amount) AS total, max(f.amount) AS largest,
+                   (array_agg(f.description ORDER BY f.amount DESC, f.id))[1] AS description
+            FROM finance_transactions f WHERE f.user_id=%(u)s AND f.currency='INR'
+            AND f.voided_at IS NULL AND f.transaction_type='income' AND f.transaction_date = d.day
+        ) income
+        CROSS JOIN LATERAL (
+            SELECT sum(f.amount) AS total, max(f.amount) AS largest,
+                   (array_agg(f.description ORDER BY f.amount DESC, f.id))[1] AS description
+            FROM finance_transactions f WHERE f.user_id=%(u)s AND f.currency='INR'
+            AND f.voided_at IS NULL AND f.transaction_type='expense' AND f.transaction_date = d.day
+        ) expenses
+        ORDER BY d.day
+        """,
         {"tz": timezone, "days": days, "u": owner},
     )
     totals = fetch_one(

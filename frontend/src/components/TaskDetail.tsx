@@ -29,7 +29,7 @@ export function TaskDetail({ task, onClose, onEdit }: { task: Task; onClose: () 
       </div>
       <p className="mute" style={{ marginTop: 0 }}>{live.description || "No description."}</p>
       <div className="row sb" style={{ margin: "16px 0 6px" }}><h3>Subtasks</h3><span className="mono">{done}/{subs.length}</span></div>
-      <Progress value={subs.length ? (done / subs.length) * 100 : 0} />
+      <Progress label={task.title} detail={`${done} of ${subs.length} subtasks completed.`} value={subs.length ? (done / subs.length) * 100 : 0} />
       <div className="list" style={{ margin: "8px 0" }}>
         {subs.map((s) => (
           <div key={s.id} className={`li ${s.status === "completed" ? "done" : ""}`}>

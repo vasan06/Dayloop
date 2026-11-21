@@ -107,8 +107,8 @@ export type FieldDef = {
 };
 
 /** Generic form modal: renders fields, collects values, submits as strings. */
-export function FormModal({ title, fields, initial = {}, submit = "Save", busy, onSubmit, onClose }: {
-  title: string; fields: FieldDef[]; initial?: Record<string, string>; submit?: string; busy?: boolean;
+export function FormModal({ title, fields, initial = {}, submit = "Save", busy, error, onSubmit, onClose }: {
+  title: string; fields: FieldDef[]; initial?: Record<string, string>; submit?: string; busy?: boolean; error?: Error | null;
   onSubmit: (values: Record<string, string>) => void; onClose: () => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.name, initial[f.name] ?? ((f.type === "select" || f.type === "banner") ? f.options?.[0]?.[0] ?? "" : "")])));
@@ -135,6 +135,7 @@ export function FormModal({ title, fields, initial = {}, submit = "Save", busy, 
             ))}
           </div>
         ))}
+        {error && <p role="alert" className="sm">{error.message}</p>}
         <div className="row" style={{ justifyContent: "flex-end", marginTop: 6 }}>
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn pri" disabled={busy}>{busy ? "Saving…" : submit}</button>
@@ -144,8 +145,20 @@ export function FormModal({ title, fields, initial = {}, submit = "Save", busy, 
   );
 }
 
-export function ConfirmModal({ title, body, confirm = "Delete", onConfirm, onClose }: { title: string; body: string; confirm?: string; onConfirm: () => void; onClose: () => void }) {
-  return <Modal title={title} onClose={onClose}><p className="mute" style={{ marginTop: 0 }}>{body}</p><div className="row" style={{ justifyContent: "flex-end" }}><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn bad" onClick={() => { onConfirm(); onClose(); }}>{confirm}</button></div></Modal>;
+export function ConfirmModal({ title, body, confirm = "Delete", onConfirm, onClose, busy, error }: {
+  title: string; body: string; confirm?: string; onConfirm: () => void; onClose: () => void; busy?: boolean; error?: Error | null;
+}) {
+  const close = () => { if (!busy) onClose(); };
+  return <Modal title={title} onClose={close}>
+    <p className="mute" style={{ marginTop: 0 }}>{body}</p>
+    {error && <p role="alert" className="sm">{error.message}</p>}
+    <div className="row" style={{ justifyContent: "flex-end" }}>
+      <button className="btn ghost" disabled={busy} onClick={close}>Cancel</button>
+      <button className="btn bad" disabled={busy} onClick={() => { onConfirm(); if (busy === undefined) onClose(); }}>
+        {busy ? "Saving…" : confirm}
+      </button>
+    </div>
+  </Modal>;
 }
 
 export function Check22({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {

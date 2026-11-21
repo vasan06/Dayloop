@@ -46,14 +46,24 @@ def list_tasks(
     )
 
 
+def ensure_available_title(connection, user_id: str, title: str, task_id: str | None = None) -> None:
+    # Serialize title checks with writes, including simultaneous creates and renames.
+    connection.execute("SELECT id FROM users WHERE id=%s FOR UPDATE", (user_id,))
+    duplicate = connection.execute(
+        "SELECT id FROM tasks WHERE user_id=%s AND lower(title)=lower(%s) "
+        "AND id IS DISTINCT FROM %s::uuid AND deleted_at IS NULL LIMIT 1",
+        (user_id, title, task_id),
+    ).fetchone()
+    if duplicate:
+        raise HTTPException(409, "A task with this name already exists. Use a different name.")
+
+
 def create_task(user_id: str, payload: dict) -> dict:
     title = str(payload.get("title", "")).strip()
     if not title or len(title) > 240:
         raise HTTPException(
             status_code=422, detail="Task title is required (maximum 240 characters)."
         )
-    if fetch_one("SELECT id FROM tasks WHERE user_id=%s AND lower(title)=lower(%s) AND deleted_at IS NULL", (user_id, title)):
-        raise HTTPException(status_code=409, detail="A task with this name already exists. Use a different name.")
     project_id = validate_uuid(payload.get("project_id"), "project_id")
     parent_id = validate_uuid(payload.get("parent_task_id"), "parent_task_id")
     if payload.get("status", "not_started") not in {
@@ -77,22 +87,17 @@ def create_task(user_id: str, payload: dict) -> dict:
         (parent_id, user_id),
     ):
         raise HTTPException(status_code=404, detail="Parent task not found.")
-    return fetch_one(
-        "INSERT INTO tasks (user_id, project_id, parent_task_id, title, description, status, priority, start_at, due_at, completed_at) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,CASE WHEN %s THEN now() END) RETURNING *",
-        (
-            user_id,
-            project_id,
-            parent_id,
-            title,
-            payload.get("description", ""),
-            payload.get("status", "not_started"),
-            payload.get("priority", "normal"),
-            payload.get("start_at"),
-            payload.get("due_at"),
-            payload.get("status") == "completed",
-        ),
-    )
+    with get_connection() as connection:
+        ensure_available_title(connection, user_id, title)
+        return connection.execute(
+            "INSERT INTO tasks (user_id, project_id, parent_task_id, title, description, status, priority, start_at, due_at, completed_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,CASE WHEN %s THEN now() END) RETURNING *",
+            (
+                user_id, project_id, parent_id, title, payload.get("description", ""),
+                payload.get("status", "not_started"), payload.get("priority", "normal"),
+                payload.get("start_at"), payload.get("due_at"), payload.get("status") == "completed",
+            ),
+        ).fetchone()
 
 
 def update_task(user_id: str, task_id: str, payload: dict) -> dict:
@@ -123,6 +128,9 @@ def update_task(user_id: str, task_id: str, payload: dict) -> dict:
         ):
             raise HTTPException(status_code=404, detail="Project not found.")
     with get_connection() as connection:
+        if "title" in changes:
+            changes["title"] = changes["title"].strip()
+            ensure_available_title(connection, user_id, changes["title"], task_id)
         assignments = ", ".join(f"{field} = %s" for field in changes)
         if "status" in changes:
             assignments += (

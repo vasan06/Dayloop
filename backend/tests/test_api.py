@@ -175,6 +175,47 @@ def test_boolean_tracker_rejects_non_boolean_values(client):
     assert client.post(url, json={"numeric_value": 0}).is_success
 
 
+def test_goal_crud_keeps_fields_and_owner(client):
+    url = "/api/v1/goals"
+    goal = item(client.post(url, json={"title": "Learn", "current_value": 1, "target_value": 3, "status": "paused"}))
+    assert goal["status"] == "paused" and Decimal(str(goal["current_value"])) == 1
+    detail = url + "/" + goal["id"]
+    other = {"X-DayLoop-Dev-User": "other"}
+    assert client.patch(detail, headers=other, json={"title": "Private"}).status_code == 404
+    assert client.delete(detail, headers=other).status_code == 404
+    changes = {"title": "Read", "goal_type": "learning", "start_date": "2026-11-01", "status": "active"}
+    saved = item(client.patch(detail, json=changes))
+    assert all(saved[key] == value for key, value in changes.items())
+    assert Decimal(str(item(client.post(detail + "/increment"))["current_value"])) == 2
+    assert item(client.post(detail + "/increment"))["status"] == "completed"
+    assert client.post(detail + "/increment").status_code == 409
+    assert client.get(url).json()["items"][0]["id"] == goal["id"]
+    assert client.delete(detail).status_code == 204
+    assert client.get(url).json()["items"] == []
+
+
+def test_tracker_crud_preserves_recorded_type_and_owner(client):
+    url = "/api/v1/trackers"
+    tracker = item(client.post(url, json={"name": "Water", "unit": "L"}))
+    detail = url + "/" + tracker["id"]
+    assert item(client.patch(detail, json={"metric_type": "duration"}))["metric_type"] == "duration"
+    item(client.post(detail + "/entries", json={"numeric_value": 2}))
+    assert client.patch(detail, json={"metric_type": "boolean"}).status_code == 409
+    other = {"X-DayLoop-Dev-User": "other"}
+    assert client.patch(detail, headers=other, json={"unit": None}).status_code == 404
+    assert client.delete(detail, headers=other).status_code == 404
+    changes = {"name": "Study", "frequency": "weekly", "unit": "hours", "target_value": 0}
+    saved = item(client.patch(detail, json=changes))
+    saved["target_value"] = Decimal(str(saved["target_value"]))
+    assert all(saved[key] == value for key, value in changes.items())
+    assert client.get(url).json()["items"][0]["name"] == "Study"
+    assert len(client.get(detail + "/entries").json()["items"]) == 1
+    assert client.delete(detail).status_code == 204
+    assert client.get(url).json()["items"] == []
+    assert client.post(detail + "/entries", json={"numeric_value": 1}).status_code == 404
+    assert client.patch(detail, json={"name": "Again"}).status_code == 404
+
+
 def test_project_dates_survive_creation(client):
     project = item(client.post("/api/v1/projects", json={"name": "Ship", "start_date": "2026-11-01", "due_date": "2026-11-20"}))
     assert project["start_date"] == "2026-11-01"

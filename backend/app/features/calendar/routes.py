@@ -62,6 +62,21 @@ def create_event(payload: EventFields, user: dict = Depends(get_current_user)) -
     }
 
 
+@router.patch("/events/{event_id}")
+def update_event(event_id: UUID, payload: dict, user: dict = Depends(get_current_user)) -> dict:
+    if "completed" not in payload:
+        raise HTTPException(status_code=422, detail="No supported event changes were supplied.")
+    completed = bool(payload["completed"])
+    event = fetch_one(
+        "UPDATE calendar_events SET completed_at=CASE WHEN %s THEN COALESCE(completed_at,now()) ELSE NULL END "
+        "WHERE id=%s AND user_id=%s RETURNING *",
+        (completed, event_id, user["id"]),
+    )
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    return {"item": event}
+
+
 @router.delete("/events/{event_id}", status_code=204)
 def delete_event(event_id: UUID, user: dict = Depends(get_current_user)) -> Response:
     event = fetch_one(

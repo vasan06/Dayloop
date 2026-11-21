@@ -1,10 +1,10 @@
 ﻿from datetime import date
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Required
 from uuid import UUID
 
 from pydantic import AwareDatetime, Field, StringConstraints
-from typing_extensions import Required, TypedDict
+from typing_extensions import TypedDict
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=240)]
@@ -33,6 +33,25 @@ class ProjectFields(TypedDict, total=False):
     due_date: date | None
 
 
+class ProfileFields(TypedDict, total=False):
+    username: Required[str]
+    display_name: str
+    age: Required[Annotated[int, Field(ge=13, le=120)]]
+    role: Required[str]
+    timezone: str
+    onboarding_completed: bool
+    tour_completed: bool
+
+
+class ReminderFields(TypedDict, total=False):
+    title: Required[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=180)]]
+    body: str
+    channel: Literal["in_app"]
+    source_type: Label | None
+    source_id: UUID | None
+    scheduled_at: Required[AwareDatetime]
+
+
 class GoalFields(TypedDict, total=False):
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
     description: str
@@ -45,12 +64,19 @@ class GoalFields(TypedDict, total=False):
     status: Literal["active", "completed", "paused", "cancelled"]
 
 
-class TrackerFields(TypedDict, total=False):
-    name: Required[Name]
+class TrackerOptions(TypedDict, total=False):
     metric_type: Literal["number", "duration", "boolean"]
     frequency: Literal["daily", "weekly", "monthly"]
     unit: Label | None
     target_value: Metric | None
+
+
+class TrackerChanges(TrackerOptions, total=False):
+    name: Name
+
+
+class TrackerFields(TrackerOptions):
+    name: Name
 
 
 class TrackerEntry(TypedDict, total=False):

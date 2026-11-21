@@ -5,6 +5,7 @@ from psycopg.errors import UniqueViolation
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_one
+from app.schemas.inputs import ProfileFields
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 ALLOWED_ROLES = {"school_student", "student", "working", "freelancer", "entrepreneur", "organization", "educator", "other"}
@@ -20,16 +21,11 @@ def get_profile(user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.put("")
-def update_profile(payload: dict, user: dict = Depends(get_current_user)) -> dict:
+def update_profile(payload: ProfileFields, user: dict = Depends(get_current_user)) -> dict:
     username = str(payload.get("username", "")).strip().lower()
     name = str(payload.get("display_name", username)).strip() or username
     role = str(payload.get("role", "")).strip()
-    try:
-        age = int(payload.get("age"))
-    except (TypeError, ValueError) as error:
-        raise HTTPException(status_code=422, detail="Enter a valid age.") from error
-    if not 13 <= age <= 120:
-        raise HTTPException(status_code=422, detail="Age must be between 13 and 120.")
+    age = payload["age"]
     if not re.fullmatch(r"[a-z0-9_]{3,24}", username):
         raise HTTPException(status_code=422, detail="Username must be 3ÔÇô24 letters, numbers or underscores.")
     if role not in ALLOWED_ROLES:
@@ -45,10 +41,10 @@ def update_profile(payload: dict, user: dict = Depends(get_current_user)) -> dic
             parameters.append(timezone)
     if "onboarding_completed" in payload:
         updates.append("onboarding_completed=%s")
-        parameters.append(bool(payload["onboarding_completed"]))
+        parameters.append(payload["onboarding_completed"])
     if "tour_completed" in payload:
         updates.append("tour_completed=%s")
-        parameters.append(bool(payload["tour_completed"]))
+        parameters.append(payload["tour_completed"])
     parameters.append(user["id"])
     try:
         item = fetch_one(

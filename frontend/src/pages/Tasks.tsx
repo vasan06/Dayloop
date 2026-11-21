@@ -64,7 +64,7 @@ export default function Tasks() {
           <Empty title={all.length ? "Nothing here" : "No tasks yet"} hint={all.length ? "Try another filter." : "Capture your first task — it takes two seconds."} />
         ) : <div className="list">{shown.map((t) => (
           <div key={t.id} className={`li ${t.status === "completed" ? "done" : ""}`}>
-            <Check22 on={t.status === "completed"} label={`Toggle ${t.title}`} onClick={() => { update.mutate({ id: t.id, status: t.status === "completed" ? "not_started" : "completed" }); if (t.status !== "completed") confetti(); }} />
+            <Check22 on={t.status === "completed"} label={`Toggle ${t.title}`} onClick={() => { const completing=t.status !== "completed"; update.mutate({ id: t.id, status: completing ? "completed" : "not_started" }, { onSuccess: () => { if (completing) confetti(); } }); }} />
             <Link to={`/tasks/${t.id}`} className="t lnk" style={{ textDecoration: "none", color: "inherit", padding: 0 }}><b>{t.title}</b>{projectName(t.project_id) && <span className="mute sm"> · {projectName(t.project_id)}</span>}</Link>
             <span className={`pill ${PRI_CLASS[t.priority]}`}>{priorityLabel[t.priority]}</span>
             {t.due_at && <span className={`pill ${isOverdue(t) ? "hi" : ""}`}>{shortDate(t.due_at)}</span>}
@@ -74,11 +74,11 @@ export default function Tasks() {
         ))}</div>}
       </Card>
 
-      {isNew && <FormModal title="New task" fields={fields()} initial={{ priority: "normal", status: "not_started", project_id: project }} busy={create.isPending} onClose={closeNew} onSubmit={(v) => create.mutate(payload(v), { onSuccess: closeNew })} />}
+      {isNew && <FormModal title="New task" fields={fields()} initial={{ priority: "normal", status: "not_started", project_id: project }} busy={create.isPending} onClose={closeNew} onSubmit={(v) => create.mutate(payload(v), { onSuccess: () => { if (v.status === "completed") confetti(); closeNew(); } })} />}
       {editing && (
         <FormModal title="Edit task" submit="Save changes" fields={fields()} busy={update.isPending} onClose={() => setEditing(null)}
           initial={{ title: editing.title, project_id: editing.project_id ?? "", priority: editing.priority, status: editing.status, due: toInput(editing.due_at), due_time: editing.due_at ? new Date(editing.due_at).toTimeString().slice(0,5) : "" }}
-          onSubmit={(v) => update.mutate({ id: editing.id, ...payload(v) }, { onSuccess: () => setEditing(null) })} />
+          onSubmit={(v) => update.mutate({ id: editing.id, ...payload(v) }, { onSuccess: () => { if (editing.status !== "completed" && v.status === "completed") confetti(); setEditing(null); } })} />
       )}
       {deleting && <ConfirmModal title="Delete task?" body={`“${deleting.title}” and its subtasks will be removed.`} onConfirm={() => remove.mutate(deleting.id)} onClose={() => setDeleting(null)} />}
     </>

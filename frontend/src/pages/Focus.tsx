@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlarmClock, BellRing, Flag, Pause, Play, RotateCcw, TimerReset } from "lucide-react";
-import { Card, CardHead, PageHead, Seg } from "../components/ui";
+import { Card, CardHead, PageHead, Seg, confetti } from "../components/ui";
 import { toast } from "../lib/toast";
 
 type Mode = "focus" | "stopwatch" | "alarm";
@@ -66,6 +66,7 @@ export default function Focus() {
         if (!left) {
           setFocusRunning(false); setFocusEnd(0); setVal("end", null);
           setFocusedSeconds((v) => v + minutes*60);
+          confetti();
           fire("Focus complete", `${minutes} focused minutes finished.`);
         }
       }
