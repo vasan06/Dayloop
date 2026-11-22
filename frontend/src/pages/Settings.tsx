@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { LayoutTemplate, Palette, Play, Type } from "lucide-react";
 import { Card, CardHead, PageHead } from "../components/ui";
-import MobileSyncPanel from "../components/MobileSyncPanel";
-import { notificationSound, setNotificationSound, type NotificationSound } from "../lib/notifications";
+import OfflineRecovery from "../components/OfflineRecovery";
+import { alertPermission, notificationSound, requestAlertPermission, setNotificationSound, showAlert, type NotificationSound } from "../lib/notifications";
+import { toast } from "../lib/toast";
 import { setTheme, useTheme } from "../hooks/useTheme";
 
 type Preset = "default" | "paper" | "calm" | "mono" | "ocean" | "sunset";
@@ -26,6 +27,21 @@ export default function Settings(){
   const [motion,setMotion]=useState<Motion>(()=>stored("dayloop:motion","full"));
   const [previewKey,setPreviewKey]=useState(0);
   const [sound,setSound]=useState<NotificationSound>(notificationSound);
+  const [notificationTesting,setNotificationTesting]=useState(false);
+  async function testNotification() {
+    if (notificationTesting) return;
+    setNotificationTesting(true);
+    try {
+      const permission = await alertPermission() === "granted" ? "granted" : await requestAlertPermission();
+      if (permission !== "granted") throw new Error("Enable notifications for DayLoop in your Android or browser settings.");
+      await showAlert("DayLoop test", "Notifications are configured for this device.", `dayloop-test:${Date.now()}`);
+      toast("Test notification sent. Check the Android notification shade.");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to send test notification.", "error");
+    } finally {
+      setNotificationTesting(false);
+    }
+  }
 
   useEffect(()=>{preset==="default"?document.documentElement.removeAttribute("data-preset"):document.documentElement.dataset.preset=preset;try{localStorage.setItem("dayloop:appearance-preset",preset)}catch{}},[preset]);
   useEffect(()=>{document.documentElement.dataset.density=density;try{localStorage.setItem("dayloop:density",density)}catch{}},[density]);
@@ -34,7 +50,7 @@ export default function Settings(){
   return <>
     <PageHead title="Settings" sub="Shape the workspace around how you like to work" />
     <div className="settings-layout">
-      <MobileSyncPanel />
+      <OfflineRecovery />
       <Card className="settings-main">
         <CardHead title="Appearance" />
         <div className="settings-section">
@@ -49,7 +65,11 @@ export default function Settings(){
 
       <Card className="settings-side">
         <CardHead title="Interface behavior" />
-        <div className="settings-section"><div className="settings-label"><span><b>Notification sound</b><small>Android notification channels may retain their sound choice until changed in system settings.</small></span></div><div className="row wrap" style={{ gap: 8 }}>{(["dayloop","system","silent"] as const).map((choice) => <button key={choice} className={sound === choice ? "btn pri sm" : "btn sm"} onClick={() => { setSound(choice); setNotificationSound(choice); }}>{choice === "dayloop" ? "DayLoop chime" : choice === "system" ? "System sound" : "Silent"}</button>)}</div></div>
+        <div className="settings-section"><div className="settings-label"><span><b>Notification sound</b><small>Android notification channels may retain their sound choice until changed in system settings.</small></span></div><div className="row wrap" style={{ gap: 8 }}>{(["dayloop","system","silent"] as const).map((choice) => <button key={choice} className={sound === choice ? "btn pri sm" : "btn sm"} onClick={() => { setSound(choice); setNotificationSound(choice); }}>{choice === "dayloop" ? "DayLoop chime" : choice === "system" ? "System sound" : "Silent"}</button>)}</div>
+          <button className="btn sm" type="button" onClick={() => void testNotification()} disabled={notificationTesting} style={{ marginTop: 12 }}>
+            {notificationTesting ? "Testing…" : "Send test notification"}
+          </button>
+        </div>
         <div className="settings-section">
           <div className="settings-label"><LayoutTemplate className="ic"/><span><b>Density</b><small>See the difference before choosing it.</small></span></div>
           <div className="density-options">{(["compact","comfortable","spacious"] as Density[]).map((item)=><button key={item} onClick={()=>setDensity(item)} className={density===item?"density-choice active":"density-choice"}><span className={"density-preview "+item}><i/><i/><i/></span><b>{item[0].toUpperCase()+item.slice(1)}</b></button>)}</div>

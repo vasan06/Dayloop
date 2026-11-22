@@ -124,7 +124,8 @@ export async function registerNotificationActions(onOpen: (path: string) => void
 export async function scheduleUpcomingAlerts(items: UpcomingAlert[]): Promise<void> {
   if (!nativeAlerts || await alertPermission() !== "granted") return;
   const now = Date.now();
-  const future = items.filter((item) => Number.isFinite(item.when) && item.when > now + 1000 && item.when <= now + 30 * 86400000).slice(0, 50);
+  const future = items.filter((item) => Number.isFinite(item.when) && item.when > now + 1000 && item.when <= now + 30 * 86400000)
+    .sort((a, b) => a.when - b.when).slice(0, 50);
   const ids = future.map((item) => alertId(item.key));
   const previous = await LocalNotifications.getPending();
   // Do not cancel focus timers/alarms when refreshing task/event reminders.
@@ -137,7 +138,8 @@ export async function scheduleUpcomingAlerts(items: UpcomingAlert[]): Promise<vo
     notifications: future.map(({ key, title, body, when, notificationId, sourceType, sourceId }) => ({
       id: alertId(key), title, body, ...sound, foreground: true,
       actionTypeId: sourceType ? `dayloop-${sourceType}` : undefined,
-      extra: { dayloop: true, scheduledByDayLoop: true, notificationId, sourceType, sourceId }, schedule: { at: new Date(when) },
+      extra: { dayloop: true, scheduledByDayLoop: true, notificationId, sourceType, sourceId }, schedule: { at: new Date(when), allowWhileIdle: true },
+      isExactNotification: false,
     })),
   });
 }
@@ -157,6 +159,17 @@ export async function scheduleFocusReminder(key: string, at: number, title: stri
       schedule: { at: new Date(at), allowWhileIdle: true },
     }],
   });
+}
+export async function scheduleHabitSnooze(habitId: string, at: number): Promise<void> {
+  if (!nativeAlerts) throw new Error("Background snooze is available in the Android app.");
+  if (await alertPermission() !== "granted") throw new Error("Enable DayLoop notifications before snoozing.");
+  const sound = await soundSettings();
+  await LocalNotifications.schedule({ notifications: [{
+    id: alertId(`habit-snooze:${habitId}`), title: "Habit reminder", body: "Your DayLoop habit needs attention.",
+    ...sound, foreground: true, actionTypeId: "dayloop-habit",
+    extra: { dayloop: true, sourceType: "habit", sourceId: habitId },
+    schedule: { at: new Date(at), allowWhileIdle: true }, isExactNotification: false,
+  }] });
 }
 export async function cancelFocusReminder(key: string): Promise<void> {
   if (!nativeAlerts) return;
