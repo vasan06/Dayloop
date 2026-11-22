@@ -60,8 +60,12 @@ frontend/tsconfig.tsbuildinfo
 # ==========================================
 tests/
 test/
+__tests__/
+__snapshots__/
 *.test.*
+*.spec.*
 test_*.py
+conftest.py
 *Test.java
 playwright-report/
 test-results/
@@ -76,7 +80,7 @@ docs/
 *.md
 !README.md
 package*.json
-**/packages/
+packages/
 *.log
 modifications.txt
 npm-debug.log*
