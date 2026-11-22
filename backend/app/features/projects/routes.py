@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one
-
 from app.schemas.inputs import ProjectFields
 
 router = APIRouter(prefix="/projects", tags=["projects"])

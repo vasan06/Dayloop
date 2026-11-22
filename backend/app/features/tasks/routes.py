@@ -1,6 +1,5 @@
-from uuid import UUID
-
 import json
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
@@ -15,7 +14,6 @@ from app.features.tasks.service import (
     set_task_dependencies,
     update_task,
 )
-
 from app.schemas.inputs import TaskFields
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])

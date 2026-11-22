@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import calendar
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -90,3 +90,24 @@ def sync_habit_reminder(connection, user_id, habit: dict) -> datetime | None:
         (user_id, f"Habit reminder: {habit['name']}", body, habit["id"], scheduled_at),
     )
     return scheduled_at
+
+
+def upcoming_habit_alerts(habit: dict, after: datetime, days: int = 30) -> list[dict]:
+    """Bounded native schedule so recurring reminders survive app closure."""
+    horizon = after.astimezone(UTC) + timedelta(days=days)
+    cursor = after
+    alerts = []
+    for _ in range(32):
+        when = next_habit_reminder(habit.get("reminder_config"), str(habit.get("timezone") or "Asia/Kolkata"), cursor)
+        if when is None or when.astimezone(UTC) > horizon:
+            break
+        alerts.append({
+            "key": f"habit:{habit['id']}:{when.isoformat()}",
+            "title": f"Habit reminder: {habit['name']}",
+            "body": str(habit.get("question") or habit.get("description") or "Time for your habit."),
+            "scheduled_at": when,
+            "source_type": "habit",
+            "source_id": habit["id"],
+        })
+        cursor = when + timedelta(seconds=1)
+    return alerts

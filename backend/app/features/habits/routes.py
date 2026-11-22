@@ -3,16 +3,25 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-
 from psycopg.types.json import Jsonb
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one, get_connection
-from app.features.habits.metrics import calculate_habit_metrics, habit_start_date, normalize_zero_target_entries
+from app.features.habits.metrics import (
+    calculate_habit_metrics,
+    habit_start_date,
+    normalize_zero_target_entries,
+)
 from app.features.habits.reminders import sync_habit_reminder
-from app.services.streaks import habit_is_scheduled, local_today, measurable_status, streak_history, timezone_for_stored_value, validate_timezone
-
 from app.schemas.inputs import HabitFields
+from app.services.streaks import (
+    habit_is_scheduled,
+    local_today,
+    measurable_status,
+    streak_history,
+    timezone_for_stored_value,
+    validate_timezone,
+)
 
 router = APIRouter(prefix="/habits", tags=["habits"])
 
@@ -288,6 +297,8 @@ def save_entry(
     if status == "completed" and (habit["daily_note_required"] or habit["measurement_type"] == "text") and not note.strip():
         raise HTTPException(422, "A note is required for this check-in.")
     value = measurement(payload.get("value"))
+    if status == "completed" and habit["measurement_type"] in {"quantity", "duration"} and value is None:
+        raise HTTPException(422, "A numeric measurement is required for this check-in.")
     if status == "missed" and habit["target_value"] == 0 and habit["measurement_type"] in {"quantity", "duration"}:
         status = "completed"
         value = 0

@@ -1,12 +1,10 @@
-from uuid import UUID
-
 import json
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one, get_connection
-
 from app.features.notes.blocks import validated_blocks
 
 router = APIRouter(prefix="/notes", tags=["notes"])

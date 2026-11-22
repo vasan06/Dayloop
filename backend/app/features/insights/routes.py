@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one
-
 from app.services.streaks import timezone_for_stored_value
 
 router = APIRouter(prefix="/insights", tags=["insights"])

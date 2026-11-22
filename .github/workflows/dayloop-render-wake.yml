@@ -1,0 +1,44 @@
+name: DayLoop Render wake check
+
+on:
+  schedule:
+    # Free Render instances usually idle after 15 minutes. Scheduled GitHub
+    # workflows are best-effort and can be delayed or skipped.
+    - cron: '8,18,28,38,48,58 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      DAYLOOP_HEALTH_BASE_URL: ${{ vars.DAYLOOP_API_URL }}
+    steps:
+      - name: Wake and check DayLoop API
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+
+          base = os.getenv("DAYLOOP_HEALTH_BASE_URL", "").strip().rstrip("/")
+          if not base.startswith("https://") or not base.endswith("/api/v1"):
+              print("::error::DAYLOOP_API_URL must be a public HTTPS URL ending in /api/v1")
+              sys.exit(1)
+          try:
+              request = urllib.request.Request(base + "/health", headers={"User-Agent": "DayLoop-GitHub-Health/1.0"})
+              with urllib.request.urlopen(request, timeout=90) as response:
+                  result = json.load(response)
+              if result.get("status") != "ok":
+                  raise ValueError("Unexpected health response")
+              print("Render API responded OK.")
+          except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+              print(f"::error::Render wake check failed: {type(exc).__name__}")
+              sys.exit(1)
+          PY

@@ -6,8 +6,6 @@ All API errors follow the same envelope so clients parse one format.
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel
 
 

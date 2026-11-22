@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 
 from fastapi import FastAPI, Request
@@ -37,6 +38,13 @@ def create_app() -> FastAPI:
         version="0.3.0",
         description="Personal life management API for DayLoop.",
     )
+
+    @application.on_event("startup")
+    def start_notification_worker() -> None:
+        if get_settings()["app_env"] == "development":
+            return
+        from app.worker import run_worker
+        threading.Thread(target=run_worker, daemon=True, name="dayloop-notifications").start()
 
     # The web client sends the local development identity headers, which makes
     # browsers issue an OPTIONS preflight before every API request.  Without
