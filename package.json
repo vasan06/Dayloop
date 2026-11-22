@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "python backend/app.py",
     "build": "npm --workspace frontend run build",
-    "typecheck": "npm --workspace frontend run typecheck"
+    "typecheck": "npm --workspace frontend run typecheck",
+    "test:e2e": "playwright test"
   }
 }

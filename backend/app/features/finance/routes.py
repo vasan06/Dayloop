@@ -1,7 +1,7 @@
 import re
 from datetime import date
-from uuid import UUID
 from decimal import Decimal, InvalidOperation
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 

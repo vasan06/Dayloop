@@ -58,15 +58,7 @@ frontend/tsconfig.tsbuildinfo
 # ==========================================
 # Test Files & Test Outputs
 # ==========================================
-tests/
-test/
-__tests__/
-__snapshots__/
-*.test.*
-*.spec.*
-test_*.py
-conftest.py
-*Test.java
+# Keep test source in Git. Ignore generated reports and caches only.
 playwright-report/
 test-results/
 cypress/screenshots/

@@ -1,9 +1,11 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import get_current_user
 from app.core.database import fetch_all, fetch_one, get_connection
+from app.features.habits.reminders import upcoming_habit_alerts
 from app.features.habits.routes import save_entry
 from app.features.tasks.service import update_task
 from app.schemas.inputs import ReminderFields
@@ -89,7 +91,23 @@ def notification_center(user: dict = Depends(get_current_user)) -> dict:
         "WHERE user_id=%s AND completed_at IS NULL AND end_at >= now() ORDER BY start_at ASC LIMIT 50",
         (user["id"],),
     )
-    return {"items": items, "tasks": tasks, "events": events}
+    upcoming = fetch_all(
+        "SELECT id,title,body,source_type,source_id,scheduled_at FROM notification_jobs "
+        "WHERE user_id=%s AND status='pending' AND channel='in_app' "
+        "AND scheduled_at > now() - interval '7 days' AND scheduled_at <= now() + interval '30 days' "
+        "ORDER BY scheduled_at ASC LIMIT 50",
+        (user["id"],),
+    )
+    habits = fetch_all(
+        "SELECT id,name,description,question,timezone,reminder_config FROM habits "
+        "WHERE user_id=%s AND archived_at IS NULL AND reminder_config->>'type' IS DISTINCT FROM 'none' "
+        "ORDER BY created_at DESC LIMIT 100",
+        (user["id"],),
+    )
+    now = datetime.now(UTC)
+    native_habits = [alert for habit in habits for alert in upcoming_habit_alerts(habit, now)]
+    return {"items": items, "tasks": tasks, "events": events, "upcoming": upcoming,
+            "native_habits": native_habits}
 
 
 @router.post("/read-all")

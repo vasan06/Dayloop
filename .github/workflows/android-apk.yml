@@ -101,6 +101,17 @@ jobs:
             echo "::error::Debug signing SHA-1 $signing_sha1 is not registered in the supplied Firebase Android configuration. Register this fingerprint in Firebase and download a refreshed google-services.json."
             exit 1
           fi
+          # The Android OAuth client registered for this app currently uses
+          # this fingerprint. Reject a self-consistent but unrelated secret pair.
+          expected_sha1="0224D4E83EFFE3203DAB61F71894B3FBC7F71554"
+          if [ "$signing_sha1" != "$expected_sha1" ]; then
+            echo "::error::APK signer does not match DayLoop's registered Android SHA-1. Review the signing keystore secret before distributing this APK."
+            exit 1
+          fi
+          signing_sha256="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1)"
+          echo "::notice::APK signer SHA-1: $signing_sha1 (matches Firebase Android OAuth client)"
+          echo "::notice::APK signer SHA-256: $signing_sha256 (register in Firebase Android app settings if missing)"
+          echo "::notice::APK package: com.dayloop.app; Firebase project: dayloop-a5c00"
       - name: Sync web assets to Android
         working-directory: mobile
         run: npx cap sync android

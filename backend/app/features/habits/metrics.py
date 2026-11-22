@@ -1,6 +1,11 @@
 ﻿from datetime import date, timedelta
 
-from app.services.streaks import habit_is_scheduled, local_today, streak_history, timezone_for_stored_value
+from app.services.streaks import (
+    habit_is_scheduled,
+    local_today,
+    streak_history,
+    timezone_for_stored_value,
+)
 
 
 def habit_start_date(habit: dict, fallback: date) -> date:

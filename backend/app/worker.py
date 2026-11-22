@@ -1,7 +1,10 @@
+import logging
 import time
 
 from app.core.database import get_connection
 from app.features.habits.reminders import sync_habit_reminder
+
+logger = logging.getLogger("dayloop.notifications")
 
 
 def process_due_notifications(batch_size: int = 50) -> int:
@@ -51,8 +54,12 @@ def process_due_notifications(batch_size: int = 50) -> int:
 
 def run_worker() -> None:
     while True:
-        processed = process_due_notifications()
-        time.sleep(1 if processed else 5)
+        try:
+            processed = process_due_notifications()
+            time.sleep(1 if processed else 5)
+        except Exception:
+            logger.exception("Notification worker failed; retrying")
+            time.sleep(10)
 
 
 if __name__ == "__main__":

@@ -2,8 +2,8 @@ import os
 from contextlib import contextmanager
 from functools import lru_cache
 
-from psycopg.rows import dict_row
 from psycopg.conninfo import conninfo_to_dict
+from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from app.core.config import get_settings
