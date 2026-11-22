@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type TouchEvent } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -12,7 +12,9 @@ import { setTheme, useTheme } from "../hooks/useTheme";
 import { Modal, Toaster } from "./ui";
 import { AxisBars } from "./InteractiveCharts";
 import { apiRequest } from "../lib/api";
-import { alertPermission, nativeAlerts, requestAlertPermission, scheduleUpcomingAlerts, showAlert, type AlertPermission } from "../lib/notifications";
+import { useQueryClient } from "@tanstack/react-query";
+import { isNativeMobile } from "../lib/mobileData";
+import { alertPermission, nativeAlerts, registerNotificationActions, requestAlertPermission, scheduleUpcomingAlerts, showAlert, type AlertPermission } from "../lib/notifications";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -42,6 +44,32 @@ export function Logo({ light = true }: { light?: boolean }) {
 }
 
 export default function Shell({ onSignOut, identity }: { onSignOut: () => void; identity: string }) {
+  const queryClient = useQueryClient();
+  const pullStart = useRef<number | null>(null);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [staleCache, setStaleCache] = useState(false);
+  useEffect(() => {
+    if (!isNativeMobile) return;
+    const update = (event: Event) => setStaleCache(Boolean((event as CustomEvent<{ stale: boolean }>).detail?.stale));
+    window.addEventListener("dayloop:cache-state", update);
+    return () => window.removeEventListener("dayloop:cache-state", update);
+  }, []);
+  const refreshable = /^\/(?:$|habits(?:\/|$)|tasks(?:\/|$)|projects(?:\/|$)|finance(?:\/|$)|calendar(?:\/|$)|notes(?:\/|$)|analytics(?:\/|$))/.test(window.location.pathname);
+  const startPull = (event: TouchEvent<HTMLElement>) => {
+    if (!isNativeMobile || !refreshable || refreshing || window.scrollY > 0 || event.currentTarget.scrollTop > 0) return;
+    pullStart.current = event.touches[0]?.clientY ?? null;
+  };
+  const movePull = (event: TouchEvent<HTMLElement>) => {
+    if (pullStart.current === null) return;
+    setPullDistance(Math.min(110, Math.max(0, (event.touches[0]?.clientY ?? pullStart.current) - pullStart.current)));
+  };
+  const endPull = () => {
+    pullStart.current = null;
+    if (pullDistance < 72 || refreshing) { setPullDistance(0); return; }
+    setRefreshing(true);
+    void queryClient.invalidateQueries({ refetchType: "active" }).finally(() => { setPullDistance(0); setRefreshing(false); });
+  };
   const [collapsed, setCollapsed] = useState(() => safeGet("dl-rail") === "1");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [browseOpen, setBrowseOpen] = useState(false);
@@ -59,6 +87,12 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    let active = true;
+    void registerNotificationActions((path) => navigate(path)).then((stop) => { if (active) dispose = stop; else stop(); });
+    return () => { active = false; dispose?.(); };
+  }, [navigate]);
   const profile = useProfile();
   const notificationCenter = useNotificationCenter();
   const markAllRead = useMarkAllNotificationsRead();
@@ -199,6 +233,8 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
       const future = [
         ...(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && task.status !== "completed" && task.status !== "cancelled").map((task) => ({
           key: `task:${task.id}:${task.due_at}`, title: "Task due", body: task.title, when: Date.parse(task.due_at!),
+          notificationId: notificationCenter.data?.items.find((item) => item.source_type === "task" && item.source_id === task.id)?.id,
+          sourceType: "task",
         })),
         ...(notificationCenter.data?.events ?? []).map((event) => ({
           key: `event:${event.id}:${event.start_at}`, title: "Calendar event", body: event.title, when: Date.parse(event.start_at),
@@ -267,7 +303,6 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   const dark = theme === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : theme === "dark";
   const nextTheme = dark ? "light" : "dark";
 
-  useEffect(() => { document.title = `${title} · DayLoop`; }, [title]);
 
   return (
     <div className="app">
@@ -326,7 +361,9 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
         </div>
       </nav>
 
-      <main className={`main ${entered ? "enter" : ""}`} id="main" tabIndex={-1}>
+      <main className={`main ${entered ? "enter" : ""}`} id="main" tabIndex={-1} onTouchStart={startPull} onTouchMove={movePull} onTouchEnd={endPull} onTouchCancel={() => { pullStart.current = null; setPullDistance(0); }}>
+        {staleCache && <div role="status" className="sm" style={{ padding: 8, textAlign: "center", background: "var(--butter)", color: "var(--ink)" }}>Showing saved data. Connect and pull down to refresh.</div>}
+        {isNativeMobile && (pullDistance > 0 || refreshing) && <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 8 }}>{refreshing ? "Refreshing…" : pullDistance >= 72 ? "Release to refresh" : "Pull to refresh"}</div>}
         <div className="bar">
           <div className="sp2" />
           <button className="kbar" onClick={() => setPaletteOpen(true)} aria-label="Open command palette"><Search className="ic" /><span>Search or jump to…</span><span className="kbd" style={{ flex: "none" }}>⌘K</span></button>
@@ -347,7 +384,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
               </div>
               <div className="notification-section"><b>Today</b>
                 {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at).toDateString() === new Date().toDateString()).map((event) => <button key={`event-${event.id}`} className="notification-row" onClick={() => navigate("/calendar")}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleTimeString()}</small></span></button>)}
-                {(notificationCenter.data?.items ?? []).filter((item) => !item.read_at).slice(0, 6).map((item) => <button key={item.id} className="notification-row" onClick={() => navigate(item.click_path ?? "/")}><span className="notification-kind">Update</span><span><b>{item.title}</b><small>{item.body}</small></span><span className="notification-dismiss" role="button" aria-label={`Dismiss ${item.title}`} onClick={(event) => { event.stopPropagation(); dismissNotification.mutate(item.id); }}>×</span></button>)}
+                {(notificationCenter.data?.items ?? []).filter((item) => !item.read_at).slice(0, 6).map((item) => <button key={item.id} className="notification-row" onClick={() => navigate(item.source_type === "task" || item.source_type === "habit" ? `/notification-action?id=${item.id}` : item.click_path ?? "/")}><span className="notification-kind">Update</span><span><b>{item.title}</b><small>{item.body}</small></span><span className="notification-dismiss" role="button" aria-label={`Dismiss ${item.title}`} onClick={(event) => { event.stopPropagation(); dismissNotification.mutate(item.id); }}>×</span></button>)}
               </div>
               <div className="notification-section"><b>Upcoming</b>
                 {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at) > new Date()).slice(0, 8).map((event) => <button key={`upcoming-${event.id}`} className="notification-row" onClick={() => navigate("/calendar")}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleString()}</small></span></button>)}

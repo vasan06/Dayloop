@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { isNativeMobile } from "../lib/mobileData";
+import { getSyncValue, isNativeMobile } from "../lib/mobileData";
 import { openMobileWorkspace, preloadMobileWorkspace, scheduleMobileSync } from "../lib/mobileApi";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "../lib/toast";
@@ -25,6 +25,7 @@ const ProjectDetail = lazy(() => import("../pages/ProjectDetail"));
 const Transactions = lazy(() => import("../pages/Transactions"));
 const Budgets = lazy(() => import("../pages/Budgets"));
 const Admin = lazy(() => import("../pages/Admin"));
+const NotificationAction = lazy(() => import("../pages/NotificationAction"));
 
 function WorkspaceSession({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({
@@ -36,17 +37,19 @@ function WorkspaceSession({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isNativeMobile) return;
     let live = true;
-    const refresh = () => { if (live) void client.invalidateQueries(); };
-    window.addEventListener("dayloop:mobile-data", refresh);
+    const refresh = () => { if (live) void client.invalidateQueries({ refetchType: "active" }); };
+    window.addEventListener("online", refresh);
     window.addEventListener("dayloop:mobile-sync", refresh);
     const stop = scheduleMobileSync();
     void openMobileWorkspace().then((ready) => {
-      if (ready && live) void preloadMobileWorkspace();
+      if (ready && live) void getSyncValue("bootstrap_status").then((status) => {
+        if (status !== "complete" && live) void preloadMobileWorkspace();
+      });
     }).catch(() => {});
     return () => {
       live = false;
       stop();
-      window.removeEventListener("dayloop:mobile-data", refresh);
+      window.removeEventListener("online", refresh);
       window.removeEventListener("dayloop:mobile-sync", refresh);
     };
   }, [client]);
@@ -61,6 +64,7 @@ export default function App() {
       {(signOut, identity) => (
         <WorkspaceSession key={identity}>
         <Routes>
+          <Route path="notification-action" element={<Suspense fallback={<div className="boot">Opening action…</div>}><NotificationAction /></Suspense>} />
           <Route element={<Shell onSignOut={signOut} identity={identity} />}>
             <Route index element={<Dashboard />} />
             <Route path="tasks" element={<Tasks />} />

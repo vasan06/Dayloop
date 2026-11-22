@@ -11,6 +11,9 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithCredential,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  setPersistence,
   signOut,
   type User,
 } from "firebase/auth";
@@ -131,6 +134,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
   const register = mode === "signup";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [draft, setDraft] = useState<ProfileDraft>(emptyProfile);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -228,10 +232,12 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
         await sendPasswordResetEmail(firebaseAuth, email.trim());
         setInfo("If that email has an account, a reset link is on its way.");
       } else if (register) {
+        if (!isNativeMobile) await setPersistence(firebaseAuth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
         const credential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
         await credential.user.getIdToken(true);
         setProfileReady(false);
       } else {
+        if (!isNativeMobile) await setPersistence(firebaseAuth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
         await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
       }
     } catch (reason) {
@@ -246,6 +252,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
     setError("");
     setBusy(true);
     try {
+      if (!isNativeMobile) await setPersistence(firebaseAuth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       const provider = new GoogleAuthProvider();
       if (isNativeMobile) {
         // A WebView redirect may leave DayLoop blank after the Google chooser.
@@ -308,11 +315,6 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
 
   const strength = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(password)).length;
   const passwordMatches = confirmPassword.length > 0 && password === confirmPassword;
-  useEffect(() => {
-    if (loading) document.title = "Loading · DayLoop";
-    else if (user || localAccess) { if (!profileReady) document.title = "Complete profile · DayLoop"; }
-    else document.title = mode === "landing" ? "DayLoop" : mode === "signin" ? "Sign in · DayLoop" : mode === "signup" ? "Create account · DayLoop" : "Reset password · DayLoop";
-  }, [loading, user, localAccess, profileReady, mode]);
   const brand = (
     <div className="auth-brand">
       <Logo light={false} />
@@ -449,6 +451,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
     <p className="auth-description">Return to the workspace you already built.</p>{configWarning}
     <div className="field"><label htmlFor="signin-email">Email</label><input id="signin-email" type="email" autoComplete="email" required value={email} onChange={(e)=>setEmail(e.target.value)}/></div>
     <div className="field auth-password-field"><label htmlFor="signin-pw">Password</label><div className="pw"><input id="signin-pw" type={showPw?"text":"password"} autoComplete="current-password" required value={password} onChange={(e)=>setPassword(e.target.value)}/><button type="button" aria-label={showPw?"Hide password":"Show password"} onClick={()=>setShowPw((s)=>!s)}>{showPw?<EyeOff className="ic"/>:<Eye className="ic"/>}</button></div></div>
+    {!isNativeMobile && <label className="row sm" style={{ gap: 8 }}><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} /> Remember me on this device</label>}
     {error&&<p className="err" role="alert">{error}</p>}
     <button className="btn pri auth-submit" disabled={!firebaseAuth||busy}>{busy?"Signing in…":"Sign in to DayLoop"}</button>
     {firebaseAuth&&<button type="button" className="btn auth-google" disabled={busy} onClick={()=>void signInWithGoogle()}><GoogleMark/>Continue with Google</button>}

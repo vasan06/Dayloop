@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "386109161178-uf1bl5o4njk33gnfk2n9akmt8fbv6mm4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dayloop.app",
+            "certificate_hash": "0224d4e83effe3203dab61f71894b3fbc7f71554"
+          }
+        },
+        {
           "client_id": "386109161178-3gs2g5t1s9e6lf1f16qsi6di77hvnelr.apps.googleusercontent.com",
           "client_type": 3
         }

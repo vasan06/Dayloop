@@ -16,6 +16,11 @@ function Count({ value, money: asMoney }: { value: number; money?: boolean }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [range, setRange] = useState<"7" | "30">("7");
+  const [weekMetric, setWeekMetric] = useState<"tasks_completed" | "habits_done" | "expenses">("tasks_completed");
+  const [heatMonthOffset, setHeatMonthOffset] = useState(0);
+  const heatMonth = new Date(new Date().getFullYear(), new Date().getMonth() - heatMonthOffset, 1);
+  const heatDays = new Date(heatMonth.getFullYear(), heatMonth.getMonth() + 1, 0).getDate();
+  const insightDays = Math.min(365, Math.max(35, Math.round((Date.now() - heatMonth.getTime()) / 86_400_000) + 1));
   const profile = useProfile();
   const tasks = useTasks();
   const projects = useProjects();
@@ -23,7 +28,7 @@ export default function Dashboard() {
   const summary = useSummary();
   const txs = useTransactions();
   const events = useEvents();
-  const insights = useInsights(35);
+  const insights = useInsights(insightDays);
   const update = useUpdateTask();
 
   const t = tasks.data ?? [];
@@ -84,9 +89,14 @@ export default function Dashboard() {
 
   const heat = useMemo(() => {
     const total = Math.max(1, h.length);
-    const days = series.slice(-35);
-    return { cells: days.map((d) => { const r = d.habits_done / total; return d.habits_done === 0 ? 0 : r > 0.99 ? 4 : r > 0.66 ? 3 : r > 0.33 ? 2 : 1; }), first: days[0] ? new Date(days[0].day + "T00:00").getDay() : 1, tips: days.map((d) => `${shortDate(d.day + "T00:00")}\n${d.habits_done} habit${d.habits_done === 1 ? "" : "s"} done`) };
-  }, [series, h.length]);
+    const byDay = new Map(series.map((day) => [day.day, day]));
+    const days = Array.from({ length: heatDays }, (_, index) => {
+      const date = new Date(heatMonth.getFullYear(), heatMonth.getMonth(), index + 1);
+      const key = isoDate(date);
+      return byDay.get(key) ?? { day: key, habits_done: 0 };
+    });
+    return { cells: days.map((d) => { const r = d.habits_done / total; return d.habits_done === 0 ? 0 : r > 0.99 ? 4 : r > 0.66 ? 3 : r > 0.33 ? 2 : 1; }), first: days[0] ? new Date(days[0].day + "T00:00").getDay() : 1, tips: days.map((d) => `${shortDate(d.day + "T00:00")}\n${d.habits_done} habit${d.habits_done === 1 ? "" : "s"} done`), values: days.map((d) => d.habits_done) };
+  }, [series, h.length, heatMonthOffset]);
 
   const loading = tasks.isLoading || habits.isLoading || insights.isLoading;
   const toggle = (id: string, done: boolean, el: HTMLElement) => { update.mutate({ id, status: done ? "not_started" : "completed" }, { onSuccess: () => { if (!done) confetti(el); } }); };
@@ -174,8 +184,8 @@ export default function Dashboard() {
         <CardHead mono="Productivity" title="Tasks & habits completed" right={<Seg value={range} options={[["7", "7 days"], ["30", "30 days"]]} onChange={setRange} />} />
         {insights.isLoading ? <Skeleton rows={5} /> : <LineChart labels={labels} series={[{ name: "Tasks done", values: windowed.map((d) => d.tasks_completed), details: windowed.map(d => includesRecord(d.completed_task)), color: "var(--acc)" }, { name: "Habits done", values: windowed.map((d) => d.habits_done), details: windowed.map(d => includesRecord(d.completed_habit)), color: "var(--amber)" }]} />}
       </Card>
-      <Card className="s4 dashboard-week-chart-card" i={8}><CardHead mono="This week" title="Tasks completed" />{week.length && week.some((d) => d.tasks_completed > 0) ? <Bars height={320} xLabel="Date" yLabel="Tasks completed" labels={week.map((d) => shortDate(d.day))} values={week.map((d) => d.tasks_completed)} details={week.map(d => includesRecord(d.completed_task))} /> : <Empty title="No completed tasks this week" hint="Complete a task to see your weekly progress." action={<button className="btn sm" onClick={() => navigate("/tasks")}>Open tasks</button>} />}</Card>
-      <Card className="s6 dashboard-compact-card dashboard-heat-card" i={9}><CardHead mono="Consistency" title="Habit activity" />{h.length ? <div className="dashboard-heat-wrap"><Heatmap cells={heat.cells} startWeekday={heat.first} tips={heat.tips} values={series.slice(-35).map(d => d.habits_done)} /></div> : <Empty title="No habits yet" hint="Build a streak." action={<button className="btn sm" onClick={() => navigate("/habits?new=1")}>Add habit</button>} />}</Card>
+      <Card className="s4 dashboard-week-chart-card" i={8}><CardHead mono="This week" title="This Week" right={<select aria-label="Weekly chart metric" value={weekMetric} onChange={(event) => setWeekMetric(event.target.value as typeof weekMetric)}><option value="tasks_completed">Tasks done</option><option value="habits_done">Habits done</option><option value="expenses">Expenses</option></select>} />{week.length ? <Bars height={260} xLabel="Day" yLabel={weekMetric === "tasks_completed" ? "Tasks" : weekMetric === "habits_done" ? "Habits" : "Expenses"} labels={week.map((d) => shortDate(d.day))} values={week.map((d) => num(d[weekMetric]))} details={weekMetric === "tasks_completed" ? week.map(d => includesRecord(d.completed_task)) : undefined} /> : <Empty title="No weekly data yet" hint="Add activity to see your weekly progress." />}</Card>
+      <Card className="s6 dashboard-compact-card dashboard-heat-card" i={9}><CardHead mono="Consistency" title="Habit activity" right={<div className="row" style={{ gap: 8 }}><button className="btn sm" onClick={() => setHeatMonthOffset((value) => Math.min(11, value + 1))} disabled={heatMonthOffset >= 11} aria-label="Previous month">‹</button><span className="sm">{heatMonth.toLocaleDateString("en", { month: "long", year: "numeric" })}</span><button className="btn sm" onClick={() => setHeatMonthOffset((value) => Math.max(0, value - 1))} disabled={heatMonthOffset === 0} aria-label="Next month">›</button></div>} />{h.length ? <div className="dashboard-heat-wrap"><Heatmap cells={heat.cells} startWeekday={heat.first} tips={heat.tips} values={heat.values} /></div> : <Empty title="No habits yet" hint="Build a streak." action={<button className="btn sm" onClick={() => navigate("/habits?new=1")}>Add habit</button>} />}</Card>
       <Card className="s6 dashboard-compact-card" i={10}>
         <CardHead mono="Projects" title="Progress" right={<Link className="lnk acc sm" to="/projects">All</Link>} />
         <div className="list">

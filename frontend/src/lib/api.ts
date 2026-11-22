@@ -21,6 +21,10 @@ export class ApiRequestError extends Error {
 }
 
 async function directApiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort("timeout"), 20_000);
+  const cancel = () => controller.abort("cancelled");
+  options.signal?.addEventListener("abort", cancel, { once: true });
   const headers = new Headers(options.headers);
   if (options.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -35,17 +39,19 @@ async function directApiRequest<T>(path: string, options: RequestInit = {}): Pro
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    if (!navigator.onLine) throw new ApiRequestError("No internet connection. Check your network and try again.", 0);
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers, signal: controller.signal });
     if (response.status === 401 && firebaseAuth?.currentUser) {
       headers.set("Authorization", "Bearer " + await firebaseAuth.currentUser.getIdToken(true));
-      response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+      response = await fetch(`${API_BASE}${path}`, { ...options, headers, signal: controller.signal });
     }
   } catch (reason) {
-    const message = reason instanceof Error ? reason.message : "Network request failed.";
-    throw new ApiRequestError(
-      `Network error contacting ${API_BASE}${path}: ${message}. The API may be unreachable from the Android WebView (HTTP/mixed-content or network access).`,
-      0,
-    );
+    if (reason instanceof ApiRequestError) throw reason;
+    if (controller.signal.aborted) throw new ApiRequestError(controller.signal.reason === "timeout" ? "Request timed out. Your connection may be unstable. Please try again." : "Request cancelled.", 0);
+    throw new ApiRequestError("DayLoop could not reach the server. Check your connection and try again.", 0);
+  } finally {
+    window.clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", cancel);
   }
 
   if (!response.ok) {
@@ -53,8 +59,11 @@ async function directApiRequest<T>(path: string, options: RequestInit = {}): Pro
     const detail = Array.isArray(body.detail)
       ? body.detail.map((item) => item.msg ?? "Invalid value").join("; ")
       : body.detail;
+    const message = response.status === 401 ? "Your session has expired. Please sign in again."
+      : response.status >= 500 ? "DayLoop is temporarily unavailable. Please try again."
+      : detail ?? "The operation failed. Please try again.";
     throw new ApiRequestError(
-      `HTTP ${response.status}: ${detail ?? "The request could not be completed."}`,
+      message,
       response.status,
       body.detail,
     );

@@ -41,6 +41,18 @@ export default function MobileSyncPanel() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "Sync failed"); }
     finally { setBusy(false); }
   }
+  async function exportPending() {
+    try {
+      const [changes, unresolved] = await Promise.all([pendingMutations(), listConflicts()]);
+      const payload = JSON.stringify({ exported_at: new Date().toISOString(), pending_mutations: changes, conflicts: unresolved }, null, 2);
+      const url = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `dayloop-pending-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not export pending changes"); }
+  }
   async function importExisting() {
     setBusy(true); setError("");
     try { await preloadMobileWorkspace(); await refresh(); }
@@ -64,7 +76,7 @@ export default function MobileSyncPanel() {
   return <section className="card" aria-label="Mobile synchronization" style={{ padding: 20, gridColumn: "1 / -1" }}>
     <div className="row sb" style={{ gap: 12, alignItems: "center" }}>
       <div><h3 style={{ margin: 0 }}><Smartphone className="ic" /> Mobile synchronization</h3>
-        <p className="mute sm">Your changes are saved on this device and sent when the DayLoop API is reachable.</p></div>
+        <p className="mute sm">New changes require the server. Edits queued by earlier app versions stay here until reconciled.</p></div>
       <button className="btn sm" onClick={() => void sync()} disabled={busy}><RefreshCw className="ic" />{busy ? "Syncing..." : "Sync now"}</button>
     </div>
     <div className="row" style={{ gap: 18 }}>
@@ -72,6 +84,7 @@ export default function MobileSyncPanel() {
       <span><AlertTriangle className="ic" /> {conflicts.length} conflict{conflicts.length === 1 ? "" : "s"}</span>
     </div>
     <p className="mute sm">PostgreSQL import: {bootstrap}; {downloaded} sections downloaded.{missing.length ? ` ${missing.length} sections need retry.` : ""}</p>
+    {(pending > 0 || conflicts.length > 0) && <button className="btn sm" onClick={() => void exportPending()}>Export pending edits and conflicts</button>}
     <button className="btn sm" disabled={busy} onClick={() => void importExisting()}>Download my existing PC data</button>
     {missing.length > 0 && <p className="mute sm">Pending sections: {missing.slice(0, 5).join(", ")}{missing.length > 5 ? "…" : ""}</p>}
     {error && <p className="err" role="alert">{error}</p>}

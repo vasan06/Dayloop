@@ -1,0 +1,24 @@
+name: DayLoop service health
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      DAYLOOP_HEALTH_BASE_URL: ${{ vars.DAYLOOP_API_URL }}
+      DAYLOOP_ADMIN_KEY: ${{ secrets.DAYLOOP_ADMIN_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      DAYLOOP_DB_WARN_BYTES: ${{ vars.DAYLOOP_DB_WARN_BYTES }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check public health and authenticated database readiness
+        run: python3 .github/scripts/monitor_health.py

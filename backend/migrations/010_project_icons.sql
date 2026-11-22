@@ -1,0 +1,1 @@
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS icon_key TEXT NOT NULL DEFAULT 'briefcase';

@@ -46,12 +46,11 @@ export const useAddTrackerEntry = () => useAction(({ id, ...entry }: { id: strin
   apiRequest(`/trackers/${id}/entries`, { method: "POST", ...json(entry) }), [["tracker-entries"]], "Entry recorded");
 export const useSummary = () => useQuery({ queryKey: keys.summary, queryFn: () => apiRequest<FinanceSummary>("/finance/summary") });
 export const useEvents = () => useQuery({ queryKey: keys.events, queryFn: items<CalendarEvent>("/calendar/events") });
-export const useNotifications = (unreadOnly = false) => useQuery({ queryKey: [...keys.notifications, unreadOnly], queryFn: items<Notification>(`/notifications${unreadOnly ? "?unread_only=true" : ""}`), refetchInterval: 30000 });
+export const useNotifications = (unreadOnly = false) => useQuery({ queryKey: [...keys.notifications, unreadOnly], queryFn: items<Notification>(`/notifications${unreadOnly ? "?unread_only=true" : ""}`) });
 export const useMarkNotificationRead = () => useAction((id: string) => apiRequest(`/notifications/${id}/read`, { method: "PATCH" }), [keys.notifications]);
 export const useNotificationCenter = () => useQuery({
   queryKey: ["notification-center"],
   queryFn: () => apiRequest<{ items: Notification[]; tasks: Task[]; events: CalendarEvent[] }>("/notifications/center"),
-  refetchInterval: 30000,
 });
 export const useMarkAllNotificationsRead = () =>
   useAction(() => apiRequest("/notifications/read-all", { method: "POST" }), [keys.notifications, ["notification-center"]]);
@@ -67,7 +66,6 @@ export const useStreakOverview = () => useQuery({
     events: Array<{ habit_id: string | null; event_type: string; event_date: string; streak_length: number; reason: string; created_at: string }>;
     longest: number;
   }>("/habits/streaks/overview"),
-  refetchInterval: 60000,
 });
 export const useInsights = (days: number) =>
   useQuery({ queryKey: [...keys.insights, days], queryFn: () => apiRequest<Insights>(`/insights/overview?days=${days}`) });
