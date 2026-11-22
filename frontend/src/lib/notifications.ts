@@ -3,6 +3,26 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 
 export type AlertPermission = "granted" | "denied" | "default";
 export const nativeAlerts = Capacitor.isNativePlatform();
+export type NotificationSound = "dayloop" | "system" | "silent";
+export function notificationSound(): NotificationSound {
+  try {
+    const value = localStorage.getItem("dayloop:notification-sound");
+    return value === "system" || value === "silent" ? value : "dayloop";
+  } catch { return "system"; }
+}
+export function setNotificationSound(value: NotificationSound): void {
+  localStorage.setItem("dayloop:notification-sound", value);
+}
+async function soundSettings(): Promise<{ channelId?: string; sound?: string }> {
+  const choice = notificationSound();
+  if (!nativeAlerts || choice === "system") return {};
+  if (choice === "silent") {
+    await LocalNotifications.createChannel({ id: "dayloop-silent-v1", name: "DayLoop silent", importance: 2 });
+    return { channelId: "dayloop-silent-v1" };
+  }
+  await LocalNotifications.createChannel({ id: "dayloop-chime-v1", name: "DayLoop chime", importance: 3, sound: "dayloop_chime.wav" });
+  return { channelId: "dayloop-chime-v1", sound: "dayloop_chime.wav" };
+}
 
 export async function alertPermission(): Promise<AlertPermission> {
   if (nativeAlerts) {
@@ -32,8 +52,9 @@ function alertId(key: string): number {
 
 export async function showAlert(title: string, body: string, key: string): Promise<void> {
   if (nativeAlerts) {
+    const sound = await soundSettings();
     await LocalNotifications.schedule({
-      notifications: [{ id: alertId(key), title, body, schedule: { at: new Date(Date.now() + 250) } }],
+      notifications: [{ id: alertId(key), title, body, ...sound, schedule: { at: new Date(Date.now() + 250) } }],
     });
     return;
   }
@@ -48,7 +69,24 @@ export async function showAlert(title: string, body: string, key: string): Promi
   new Notification(title, { body, tag: key });
 }
 
-export type UpcomingAlert = { key: string; title: string; body: string; when: number };
+export type UpcomingAlert = { key: string; title: string; body: string; when: number; notificationId?: string; sourceType?: string };
+export async function registerNotificationActions(onOpen: (path: string) => void): Promise<() => void> {
+  if (!nativeAlerts) return () => {};
+  await LocalNotifications.registerActionTypes({ types: [{ id: "dayloop-record", actions: [
+    { id: "complete", title: "Complete", foreground: true },
+    { id: "snooze", title: "Snooze", foreground: true },
+  ] }] });
+  const listener = await LocalNotifications.addListener("localNotificationActionPerformed", ({ actionId, notification }) => {
+    const id = notification.extra?.notificationId;
+    if (typeof id === "string") {
+      const action = actionId === "complete" || actionId === "snooze" ? `&action=${actionId}` : "";
+      onOpen(`/notification-action?id=${encodeURIComponent(id)}${action}`);
+    } else if (typeof notification.extra?.clickPath === "string") {
+      onOpen(notification.extra.clickPath);
+    }
+  });
+  return () => { void listener.remove(); };
+}
 export async function scheduleUpcomingAlerts(items: UpcomingAlert[]): Promise<void> {
   if (!nativeAlerts || await alertPermission() !== "granted") return;
   const now = Date.now();
@@ -59,9 +97,11 @@ export async function scheduleUpcomingAlerts(items: UpcomingAlert[]): Promise<vo
   const stale = managed.filter((notification) => !ids.includes(notification.id));
   if (stale.length) await LocalNotifications.cancel({ notifications: stale.map(({ id }) => ({ id })) });
   if (!future.length) return;
+  const sound = await soundSettings();
   await LocalNotifications.schedule({
-    notifications: future.map(({ key, title, body, when }) => ({
-      id: alertId(key), title, body, extra: { dayloop: true }, schedule: { at: new Date(when) },
+    notifications: future.map(({ key, title, body, when, notificationId, sourceType }) => ({
+      id: alertId(key), title, body, ...sound, actionTypeId: notificationId && (sourceType === "task" || sourceType === "habit") ? "dayloop-record" : undefined,
+      extra: { dayloop: true, notificationId, sourceType }, schedule: { at: new Date(when) },
     })),
   });
 }
@@ -70,11 +110,12 @@ export async function scheduleUpcomingAlerts(items: UpcomingAlert[]): Promise<vo
 export async function scheduleFocusReminder(key: string, at: number, title: string, body: string): Promise<void> {
   if (!nativeAlerts || at <= Date.now()) return;
   if (await alertPermission() !== "granted") return;
+  const sound = await soundSettings();
   await LocalNotifications.cancel({ notifications: [{ id: alertId("focus:" + key) }] });
   await LocalNotifications.schedule({
     notifications: [{
       id: alertId("focus:" + key),
-      title, body,
+      title, body, ...sound,
       extra: { dayloop: true, focus: true },
       schedule: { at: new Date(at) },
     }],

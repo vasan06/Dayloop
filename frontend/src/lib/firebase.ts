@@ -1,5 +1,6 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
+import { isNativeMobile } from "./mobileData";
 
 const firebaseConfig = {
   apiKey: String(import.meta.env.VITE_FIREBASE_API_KEY ?? "").trim(),
@@ -32,7 +33,7 @@ export const firebaseApp = firebaseConfigured
 
 export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null;
 
-if (firebaseAuth) {
+if (firebaseAuth && isNativeMobile) {
   void setPersistence(firebaseAuth, browserLocalPersistence).catch(() => {
     // Firebase still manages the active in-memory session if persistence is unavailable.
   });

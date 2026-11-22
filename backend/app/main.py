@@ -1,19 +1,21 @@
 import logging
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from app.api.health import router as health_router
-from app.features.admin.routes import router as admin_router
 from app.core.config import get_settings
+from app.features.admin.routes import router as admin_router
 from app.features.attachments.routes import router as attachments_router
 from app.features.calendar.routes import router as calendar_router
-from app.features.finance.routes import router as finance_router
 from app.features.feedback.routes import router as feedback_router
+from app.features.finance.routes import router as finance_router
 from app.features.goals.routes import router as goals_router
 from app.features.habits.routes import router as habits_router
 from app.features.insights.routes import router as insights_router
@@ -22,8 +24,8 @@ from app.features.notifications.routes import router as notifications_router
 from app.features.profile.routes import router as profile_router
 from app.features.projects.routes import router as projects_router
 from app.features.search.routes import router as search_router
-from app.features.tasks.routes import router as tasks_router
 from app.features.sync.routes import router as sync_router
+from app.features.tasks.routes import router as tasks_router
 from app.features.trackers.routes import router as trackers_router
 
 logger = logging.getLogger("dayloop.api")
@@ -54,6 +56,16 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "X-DayLoop-Dev-User", "X-DayLoop-Dev-Email", "X-DayLoop-Dev-Name"],
         expose_headers=["Content-Type"],
     )
+    application.add_middleware(GZipMiddleware, minimum_size=1024)
+
+    @application.middleware("http")
+    async def request_metrics(request: Request, call_next):
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - started) * 1000
+        if response.status_code >= 500 or duration_ms >= 2000:
+            logger.warning("request method=%s path=%s status=%s duration_ms=%.1f", request.method, request.url.path, response.status_code, duration_ms)
+        return response
 
     @application.middleware("http")
     async def security_headers(request: Request, call_next):

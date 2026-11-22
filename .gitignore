@@ -48,6 +48,7 @@ htmlcov/
 # Frontend Build & TypeScript Artifacts
 # ==========================================
 frontend/dist/
+mobile/.gradle/
 dist/
 build/
 *.tsbuildinfo
@@ -57,9 +58,11 @@ frontend/tsconfig.tsbuildinfo
 # ==========================================
 # Test Files & Test Outputs
 # ==========================================
-# Uncomment the lines below if you want to ignore the test directories completely:
-# backend/tests/
-# frontend/tests/
+tests/
+test/
+*.test.*
+test_*.py
+*Test.java
 playwright-report/
 test-results/
 cypress/screenshots/
@@ -69,7 +72,11 @@ cypress/videos/
 # Project Storage, Logs & Editor/Tooling
 # ==========================================
 storage/
-docs/*
+docs/
+*.md
+!README.md
+package*.json
+**/packages/
 *.log
 modifications.txt
 npm-debug.log*

@@ -36,13 +36,15 @@ import {
 import { isOverdue } from "../lib/derive";
 import { priorityLabel, shortDate } from "../lib/format";
 import type { Project, Task, TaskPriority, TaskStatus } from "../lib/types";
+import { BANNER_PRESETS, PROJECT_ICONS, bannerBackground } from "../lib/projectPresets";
+import { ProjectIcon } from "../components/ProjectIcon";
 
 const STATUS_OPTIONS: [string, string][] = [
   ["active", "Active"],
   ["on_hold", "On hold"],
   ["completed", "Completed"],
 ];
-const BANNER_OPTIONS: [string,string][] = [["aurora","Aurora"],["ocean","Ocean"],["sunset","Sunset"],["forest","Forest"],["violet","Violet"],["graphite","Graphite"],["citrus","Citrus"],["skyline","Skyline"],["coral","Coral"],["indigo","Indigo"],["mint","Mint"],["mono","Mono"],["grid","Grid"],["dots","Dots"],["orbit","Orbit"]];
+const BANNER_OPTIONS: [string,string][] = BANNER_PRESETS.map((preset) => [preset.id, `${preset.category} · ${preset.name}`]);
 
 const PRI_CLASS: Record<TaskPriority, string> = { urgent: "hi", high: "hi", normal: "md", low: "lo" };
 
@@ -112,6 +114,7 @@ export default function ProjectDetail() {
     { name: "name", label: "Project name", required: true },
     { name: "description", label: "Description", type: "textarea" },
     { name: "banner_key", label: "Project banner", type: "banner", options: BANNER_OPTIONS },
+    { name: "icon_key", label: "Project icon", type: "icon", options: PROJECT_ICONS },
     { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, half: true },
     { name: "due_date", label: "Deadline", type: "date", half: true },
   ];
@@ -136,6 +139,7 @@ export default function ProjectDetail() {
         name: v.name.trim(),
         description: v.description,
         banner_key: v.banner_key || "aurora",
+        icon_key: v.icon_key || "briefcase",
         status: v.status as Project["status"],
         due_date: v.due_date ? v.due_date : null,
       },
@@ -186,6 +190,7 @@ export default function ProjectDetail() {
           borderRadius: 28,
           border: "1px solid rgba(255,255,255,0.1)",
           marginBottom: 20,
+          background: bannerBackground(project.banner_key),
         }}
       >
         <div style={{ zIndex: 1 }}>
@@ -206,7 +211,7 @@ export default function ProjectDetail() {
           </div>
 
           <h1 className="hh" style={{ margin: "6px 0 10px", color: "#fff" }}>
-            {project.name}
+            <ProjectIcon iconKey={project.icon_key} /> {project.name}
           </h1>
 
           <p style={{ maxWidth: "56ch", color: "rgba(255,255,255,0.85)", margin: "0 0 18px", fontSize: 15 }}>
@@ -469,6 +474,7 @@ export default function ProjectDetail() {
             name: project.name,
             description: project.description,
             banner_key: project.banner_key || "aurora",
+            icon_key: project.icon_key || "briefcase",
             status: project.status,
             due_date: project.due_date?.slice(0, 10) ?? "",
           }}

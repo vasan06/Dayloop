@@ -59,7 +59,7 @@ README.md                 Project and setup documentation
 Prerequisites: Node.js/npm, Python, PostgreSQL, Git. PostgreSQL 17 is suitable.
 
 1. Create a dedicated PostgreSQL role and database. Use your own strong local password.
-2. Copy `.env.example` to `.env`; configure `DATABASE_URL` and the documented API settings.
+2. Copy `.env.example` to `.env`; set `DAYLOOP_ENV=development` and replace the production placeholders with your local `DATABASE_URL`, CORS origins, and API settings.
 3. Create `backend/.venv`, install `backend/requirements.txt`, and apply the existing SQL migrations using the documented backend migration command.
 4. Copy `frontend/.env.example` to `frontend/.env`, then configure the Firebase **web client** keys if using Firebase.
 5. From the repository root run:
@@ -96,6 +96,14 @@ The workflow installs Node and Java, builds the existing Vite SPA, uses the main
 ## Authentication and data security
 
 Firebase Authentication verifies users in production; FastAPI verifies Firebase ID tokens and authorizes access to application records. Store Firebase Admin credentials and `DATABASE_URL` **only on the API host**. Keep `.env`, service-account JSON, Android keystores and secrets untracked. Client-side Firebase app configuration is not equivalent to backend administrator credentials.
+
+## Render, Supabase and legacy data cutover
+
+`render.yaml` hosts only the FastAPI backend. Configure its `DATABASE_URL` with the Supabase PostgreSQL pooler connection string and `sslmode=require` (or stronger); production rejects a database URL without TLS. Set `FIREBASE_PROJECT_ID=dayloop-a5c00`, `DAYLOOP_ENV=production`, `DAYLOOP_AUTH_MODE=firebase`, a long random `DAYLOOP_ADMIN_KEY`, and `CORS_ORIGINS` containing the web origin and `https://localhost` for Android. Keep database credentials and the admin key out of `VITE_*` and APK settings. Set web `VITE_API_URL` and GitHub Actions `DAYLOOP_API_URL` to the public HTTPS Render URL ending in `/api/v1`. The actual Render URL must be supplied after service creation.
+
+Run `python -m app.db.migrate` from `backend` against staging first; the runner records applied migration filenames and skips them on rerun. Before any legacy import, export every device's pending edits and conflicts, make a separate SQLite backup, and preserve both originals and exports. Use `python -m app.db.import_sqlite SOURCE.sqlite BACKUP.sqlite` for backup and inventory, then use a fresh backup path with `--apply` only against staging. The importer rolls back on conflicting rows and verifies imported counts and Firebase UIDs. Compare relationships and authenticated records against the source before production cutover. Mobile SQLite and its legacy queue remain installed until this per-device reconciliation is complete; removing the dependency now risks losing unsent edits. Supabase backup and recovery should use the project's supported database backup or `pg_dump`/`pg_restore` procedures, verified with a staging restore before cutover.
+
+The daily `DayLoop service health` GitHub Actions workflow checks public health and admin-key-protected database readiness with bounded retries for cold starts. Set GitHub variable `DAYLOOP_API_URL` and secret `DAYLOOP_ADMIN_KEY` to match the backend. Optional `DAYLOOP_DB_WARN_BYTES` emits a database-size warning. GitHub Actions failure alerts report outages; the workflow does not keep the service awake or prevent provider quota and inactivity limits.
 
 ## Validation
 

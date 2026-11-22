@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: dayloop-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: DAYLOOP_ENV
+        value: production
+      - key: DAYLOOP_AUTH_MODE
+        value: firebase
+      - key: DATABASE_URL
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DAYLOOP_ADMIN_KEY
+        sync: false

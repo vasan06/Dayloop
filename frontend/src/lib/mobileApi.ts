@@ -1,6 +1,6 @@
 import {
   activateMobileAccount, cachedResponse, getSyncValue, isNativeMobile, listConflicts, pendingMutations,
-  queueMutation, removeMutation, saveConflict, saveResponse, setSyncValue, type PendingMutation,
+  removeMutation, saveConflict, saveResponse, setSyncValue, type PendingMutation,
 } from "./mobileData";
 import { firebaseAuth } from "./firebase";
 import { deriveOffline } from "./mobileDerived";
@@ -177,7 +177,8 @@ export async function mobileRequest<T>(
       try {
         const remote = await send(path, init) as T;
         await saveResponse(path, remote);
-        if (!syncing) void syncMobileChanges().catch(() => {});
+        window.dispatchEvent(new CustomEvent("dayloop:cache-state", { detail: { stale: false } }));
+        if (pending.length && !syncing && Date.now() - lastSync > 60_000) void syncMobileChanges().catch(() => {});
         return remote;
       } catch (error) {
         fetchFailure = error;
@@ -185,9 +186,15 @@ export async function mobileRequest<T>(
       }
     }
     const derived = await deriveOffline(path);
-    if (derived !== null) return derived as T;
+    if (derived !== null) {
+      window.dispatchEvent(new CustomEvent("dayloop:cache-state", { detail: { stale: true } }));
+      return derived as T;
+    }
     const cached = await cachedResponse<T>(path);
-    if (cached !== null) return cached;
+    if (cached !== null) {
+      window.dispatchEvent(new CustomEvent("dayloop:cache-state", { detail: { stale: true } }));
+      return cached;
+    }
     // A first download must not mask a real network/API configuration error.
     if (fetchFailure instanceof Error) {
       throw new Error(`Unable to load ${path}: ${fetchFailure.message}`);
@@ -204,20 +211,9 @@ export async function mobileRequest<T>(
     await patchCache(path, method, input, remote?.item);
     return remote as T;
   } catch (error) {
-    // Offline intent is accepted only for transport failures, never 401/403/422/500.
-    const networkFailure = error instanceof Error && /network error:|failed to fetch|network request failed/i.test(error.message);
-    if (!networkFailure) throw error;
-    const parsed = section(path);
-    const detail = parsed?.rest === "blocks" || parsed?.rest === "notes"
-      ? await cachedResponse(parsed?.rest === "blocks" ? parsed.list + "/" + parsed.id : path) : null;
-    const base = obj(detail) ? detail : parsed?.id ? await getObject(parsed.list, parsed.id) : null;
-    const parsedCreate = section(path);
-    const temporaryId = method === "POST" && (!parsedCreate?.id || parsedCreate.rest === "subtasks" || parsedCreate.rest === "entries")
-      ? crypto.randomUUID() : "";
-    // Queue first: a crash cannot leave an unsynchronized local edit behind.
-    await queueMutation({ path, method, body, base: temporaryId ? JSON.stringify({ __temp_id: temporaryId }) : base ? JSON.stringify(base) : null });
-    const result = await patchCache(path, method, input, temporaryId ? { id: temporaryId } : undefined) as T;
-    return result;
+    // Server-dependent changes must remain unsaved when the request fails.
+    // Existing queued edits from older builds are retained for explicit sync.
+    throw error;
   }
 }
 async function rewriteTemporaryId(from: string, to: string): Promise<void> {
@@ -290,6 +286,8 @@ async function pullServerChanges(send: RequestTransport): Promise<void> {
 export async function syncMobileChanges(): Promise<void> {
   if (!await openMobileWorkspace() || !transporting || !navigator.onLine) return;
   if (syncing) return syncing;
+  // Legacy edits still need reconciliation, but an idle app needs no sync traffic.
+  if (!(await pendingMutations()).length) return;
   syncing = (async () => {
     const send = transporting!;
     for (const op of await pendingMutations()) {
@@ -335,13 +333,11 @@ export function scheduleMobileSync(): () => void {
   window.addEventListener("online", run);
   window.addEventListener("focus", run);
   document.addEventListener("visibilitychange", run);
-  const timer = window.setInterval(run, 30000);
   run();
   return () => {
     window.removeEventListener("online", run);
     window.removeEventListener("focus", run);
     document.removeEventListener("visibilitychange", run);
-    window.clearInterval(timer);
   };
 }
 export async function preloadMobileWorkspace(): Promise<void> {

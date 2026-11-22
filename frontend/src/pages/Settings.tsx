@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { LayoutTemplate, Palette, Play, Type } from "lucide-react";
 import { Card, CardHead, PageHead } from "../components/ui";
 import MobileSyncPanel from "../components/MobileSyncPanel";
+import { notificationSound, setNotificationSound, type NotificationSound } from "../lib/notifications";
 import { setTheme, useTheme } from "../hooks/useTheme";
 
 type Preset = "default" | "paper" | "calm" | "mono" | "ocean" | "sunset";
@@ -24,6 +25,7 @@ export default function Settings(){
   const [density,setDensity]=useState<Density>(()=>stored("dayloop:density","comfortable"));
   const [motion,setMotion]=useState<Motion>(()=>stored("dayloop:motion","full"));
   const [previewKey,setPreviewKey]=useState(0);
+  const [sound,setSound]=useState<NotificationSound>(notificationSound);
 
   useEffect(()=>{preset==="default"?document.documentElement.removeAttribute("data-preset"):document.documentElement.dataset.preset=preset;try{localStorage.setItem("dayloop:appearance-preset",preset)}catch{}},[preset]);
   useEffect(()=>{document.documentElement.dataset.density=density;try{localStorage.setItem("dayloop:density",density)}catch{}},[density]);
@@ -47,6 +49,7 @@ export default function Settings(){
 
       <Card className="settings-side">
         <CardHead title="Interface behavior" />
+        <div className="settings-section"><div className="settings-label"><span><b>Notification sound</b><small>Android notification channels may retain their sound choice until changed in system settings.</small></span></div><div className="row wrap" style={{ gap: 8 }}>{(["dayloop","system","silent"] as const).map((choice) => <button key={choice} className={sound === choice ? "btn pri sm" : "btn sm"} onClick={() => { setSound(choice); setNotificationSound(choice); }}>{choice === "dayloop" ? "DayLoop chime" : choice === "system" ? "System sound" : "Silent"}</button>)}</div></div>
         <div className="settings-section">
           <div className="settings-label"><LayoutTemplate className="ic"/><span><b>Density</b><small>See the difference before choosing it.</small></span></div>
           <div className="density-options">{(["compact","comfortable","spacious"] as Density[]).map((item)=><button key={item} onClick={()=>setDensity(item)} className={density===item?"density-choice active":"density-choice"}><span className={"density-preview "+item}><i/><i/><i/></span><b>{item[0].toUpperCase()+item.slice(1)}</b></button>)}</div>

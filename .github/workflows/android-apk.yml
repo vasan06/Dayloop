@@ -44,10 +44,20 @@ jobs:
         run: npm ci
       - name: Validate Android API address
         run: |
-          if [[ ! "$VITE_API_URL" =~ ^https?://[^/]+/api/v1/?$ ]]; then
-            echo "::error::Set GitHub Actions variable DAYLOOP_API_URL to the LAN/hosted FastAPI address, e.g. http://YOUR-PC-IP:8000/api/v1"
+          if [[ ! "$VITE_API_URL" =~ ^https://[^/]+/api/v1/?$ ]]; then
+            echo "::error::Set DAYLOOP_API_URL to the public HTTPS Render API URL ending in /api/v1."
             exit 1
           fi
+          if [ "$VITE_FIREBASE_PROJECT_ID" != "dayloop-a5c00" ]; then
+            echo "::error::Set VITE_FIREBASE_PROJECT_ID to dayloop-a5c00; the backend FIREBASE_PROJECT_ID must match."
+            exit 1
+          fi
+          for name in VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_APP_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub Actions variable $name."
+              exit 1
+            fi
+          done
       - name: Build existing React frontend
         run: npm run build
       - name: Install Capacitor dependencies
@@ -71,6 +81,7 @@ jobs:
             exit 1
           fi
           python3 -c 'import json; p=json.load(open("mobile/android/app/google-services.json")); assert p.get("project_info",{}).get("project_id")=="dayloop-a5c00", "Unexpected Firebase project"; assert any(c.get("client_info",{}).get("android_client_info",{}).get("package_name")=="com.dayloop.app" for c in p.get("client",[])), "Firebase Android package must be com.dayloop.app"'
+          python3 -c 'import json; p=json.load(open("mobile/android/app/google-services.json")); clients=[o for c in p.get("client",[]) if c.get("client_info",{}).get("android_client_info",{}).get("package_name")=="com.dayloop.app" for o in c.get("oauth_client",[])]; assert any(o.get("client_type")==1 for o in clients), "Register the Android signing SHA-1 in Firebase and refresh google-services.json"; assert any(o.get("client_type")==3 for o in clients), "Add a Web OAuth client for native token exchange"'
           if [ -z "$DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64" ]; then
             echo "::error::Missing DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64 secret. Configure a stable Android debug signing keystore and register its SHA-1 with Firebase."
             exit 1
@@ -78,6 +89,18 @@ jobs:
           mkdir -p "$HOME/.android"
           printf '%s' "$DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
+          # Android's default debug signing configuration uses this alias and password.
+          # Check the secret's actual certificate before producing an APK.
+          signing_sha1="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA1: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          if [ -z "$signing_sha1" ]; then
+            echo "::error::Could not read the Android debug signing certificate from DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64."
+            exit 1
+          fi
+          firebase_sha1="$(python3 -c 'import json; p=json.load(open("mobile/android/app/google-services.json")); print(" ".join(o["android_info"]["certificate_hash"].upper() for c in p["client"] if c["client_info"].get("android_client_info",{}).get("package_name")=="com.dayloop.app" for o in c.get("oauth_client",[]) if o.get("client_type")==1))')"
+          if [[ " $firebase_sha1 " != *" $signing_sha1 "* ]]; then
+            echo "::error::Debug signing SHA-1 $signing_sha1 is not registered in the supplied Firebase Android configuration. Register this fingerprint in Firebase and download a refreshed google-services.json."
+            exit 1
+          fi
       - name: Sync web assets to Android
         working-directory: mobile
         run: npx cap sync android

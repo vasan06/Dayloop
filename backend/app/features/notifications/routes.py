@@ -3,10 +3,69 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import get_current_user
-from app.core.database import fetch_all, fetch_one
+from app.core.database import fetch_all, fetch_one, get_connection
+from app.features.habits.routes import save_entry
+from app.features.tasks.service import update_task
 from app.schemas.inputs import ReminderFields
+from app.services.streaks import local_today, timezone_for_stored_value
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+
+@router.post("/{notification_id}/action")
+def act_on_notification(notification_id: UUID, payload: dict, user: dict = Depends(get_current_user)) -> dict:
+    """Apply an authenticated action to the notification's original record."""
+    action = payload.get("action")
+    notification = fetch_one(
+        "SELECT id,source_type,source_id,title,body FROM notifications "
+        "WHERE id=%s AND user_id=%s AND dismissed_at IS NULL",
+        (notification_id, user["id"]),
+    )
+    if not notification:
+        raise HTTPException(404, "Notification not found or already handled.")
+    source = notification["source_type"]
+    source_id = notification["source_id"]
+    if action == "snooze":
+        minutes = payload.get("minutes", 15)
+        if not isinstance(minutes, int) or not 1 <= minutes <= 1440:
+            raise HTTPException(422, "Snooze must be between 1 and 1440 minutes.")
+        with get_connection() as connection:
+            handled = connection.execute(
+                "UPDATE notifications SET dismissed_at=now(),read_at=COALESCE(read_at,now()) "
+                "WHERE id=%s AND user_id=%s AND dismissed_at IS NULL RETURNING id",
+                (notification_id, user["id"]),
+            ).fetchone()
+            if not handled:
+                raise HTTPException(409, "Notification already handled.")
+            connection.execute(
+                "INSERT INTO notification_jobs (user_id,title,body,source_type,source_id,channel,scheduled_at) "
+                "VALUES (%s,%s,%s,%s,%s,'in_app',now()+(%s * interval '1 minute'))",
+                (user["id"], notification["title"], notification["body"], source, source_id, minutes),
+            )
+        return {"saved": True}
+    if not source_id:
+        raise HTTPException(422, "This notification has no actionable record.")
+    if source == "task" and action == "complete":
+        update_task(user["id"], source_id, {"status": "completed"})
+    elif source == "habit" and action in {"complete", "skip"}:
+        habit = fetch_one(
+            "SELECT timezone FROM habits WHERE id=%s AND user_id=%s AND archived_at IS NULL",
+            (source_id, user["id"]),
+        )
+        if not habit:
+            raise HTTPException(404, "Habit not found.")
+        day = local_today(timezone_for_stored_value(habit["timezone"]).key)
+        entry = {"status": "completed" if action == "complete" else "skipped",
+                 "value": payload.get("value"), "note": payload.get("note", "")}
+        save_entry(source_id, day, entry, user)
+    else:
+        raise HTTPException(422, "Unsupported action for this notification.")
+    fetch_one(
+        "UPDATE notifications SET dismissed_at=now(),read_at=COALESCE(read_at,now()) "
+        "WHERE id=%s AND user_id=%s AND dismissed_at IS NULL RETURNING id",
+        (notification_id, user["id"]),
+    )
+    return {"saved": True}
 
 
 @router.get("/center")

@@ -1,7 +1,9 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { Check, CircleAlert, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ToastDetail } from "../lib/toast";
+import { bannerBackground } from "../lib/projectPresets";
+import { ProjectIcon } from "./ProjectIcon";
 
 // Kept in the shared UI barrel so module pages can use the same reference progress treatment.
 export { Progress } from "./charts";
@@ -102,7 +104,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
 }
 
 export type FieldDef = {
-  name: string; label: string; type?: "text" | "number" | "date" | "time" | "datetime-local" | "textarea" | "select" | "banner";
+  name: string; label: string; type?: "text" | "number" | "date" | "time" | "datetime-local" | "textarea" | "select" | "banner" | "icon";
   required?: boolean; options?: [string, string][]; placeholder?: string; half?: boolean; step?: string; min?: number;
 };
 
@@ -112,6 +114,7 @@ export function FormModal({ title, fields, initial = {}, submit = "Save", busy, 
   onSubmit: (values: Record<string, string>) => void; onClose: () => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.name, initial[f.name] ?? ((f.type === "select" || f.type === "banner") ? f.options?.[0]?.[0] ?? "" : "")])));
+  const [iconSearch, setIconSearch] = useState("");
   const set = (name: string, v: string) => setValues((cur) => ({ ...cur, [name]: v }));
   const handle = (e: FormEvent) => { e.preventDefault(); onSubmit(values); };
   const rows: FieldDef[][] = [];
@@ -129,7 +132,8 @@ export function FormModal({ title, fields, initial = {}, submit = "Save", busy, 
                 <label htmlFor={`f-${f.name}`}>{f.label}{f.required ? " *" : ""}</label>
                 {f.type === "textarea" ? <textarea id={`f-${f.name}`} required={f.required} placeholder={f.placeholder} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)} />
                   : f.type === "select" ? <select id={`f-${f.name}`} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)}>{f.options?.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-                  : f.type === "banner" ? <div id={`f-${f.name}`} className="banner-picker">{f.options?.map(([v,l]) => <button key={v} type="button" className={values[f.name]===v ? `banner-option banner-${v} active` : `banner-option banner-${v}`} onClick={() => set(f.name,v)}><span>{l.slice(0,1)}</span><b>{l}</b></button>)}</div>
+                  : f.type === "banner" ? <div id={`f-${f.name}`} className="banner-picker">{f.options?.map(([v,l],index) => <Fragment key={v}>{(index === 0 || l.split(" · ")[0] !== f.options?.[index - 1]?.[1].split(" · ")[0]) && <strong className="banner-category">{l.split(" · ")[0]}</strong>}<button type="button" className={values[f.name]===v ? `banner-option banner-${v} active` : `banner-option banner-${v}`} style={{ background: bannerBackground(v) }} onClick={() => set(f.name,v)}><span>{l.split(" · ")[1]?.slice(0,1) || l.slice(0,1)}</span><b>{l.split(" · ")[1] || l}</b></button></Fragment>)}</div>
+                  : f.type === "icon" ? <div id={`f-${f.name}`}><input aria-label="Search project icons" placeholder="Search icons and emoji" value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} /><div className="icon-picker">{f.options?.filter(([,label]) => label.toLowerCase().includes(iconSearch.toLowerCase())).map(([v,label]) => <button key={v} type="button" className={values[f.name] === v ? "active" : ""} onClick={() => set(f.name,v)} aria-pressed={values[f.name] === v}><ProjectIcon iconKey={v} /><span>{label.split(" · ")[1]}</span><small>{label.split(" · ")[0]}</small></button>)}</div></div>
                   : <input id={`f-${f.name}`} type={f.type ?? "text"} required={f.required} placeholder={f.placeholder} step={f.step} min={f.min} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)} />}
               </div>
             ))}

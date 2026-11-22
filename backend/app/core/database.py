@@ -1,7 +1,9 @@
+import os
 from contextlib import contextmanager
 from functools import lru_cache
 
 from psycopg.rows import dict_row
+from psycopg.conninfo import conninfo_to_dict
 from psycopg_pool import ConnectionPool
 
 from app.core.config import get_settings
@@ -13,11 +15,16 @@ def get_pool() -> ConnectionPool:
     database_url = settings["database_url"]
     if not database_url:
         raise RuntimeError("DATABASE_URL is required before using persistent features.")
+    if settings["app_env"] == "production":
+        connection_options = conninfo_to_dict(database_url)
+        if connection_options.get("sslmode") not in {"require", "verify-ca", "verify-full"}:
+            raise RuntimeError("Production DATABASE_URL must require PostgreSQL TLS (sslmode=require or stronger).")
     return ConnectionPool(
         conninfo=database_url,
-        min_size=1,
-        max_size=8,
+        min_size=0,
+        max_size=max(1, min(20, int(os.getenv("DAYLOOP_DB_POOL_MAX", "5")))),
         kwargs={"row_factory": dict_row},
+        timeout=10,
         open=True,
     )
 
