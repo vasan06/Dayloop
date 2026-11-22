@@ -51,6 +51,7 @@ export const useMarkNotificationRead = () => useAction((id: string) => apiReques
 export const useNotificationCenter = () => useQuery({
   queryKey: ["notification-center"],
   queryFn: () => apiRequest<{ items: Notification[]; tasks: Task[]; events: CalendarEvent[] }>("/notifications/center"),
+  refetchInterval: 60_000,
 });
 export const useMarkAllNotificationsRead = () =>
   useAction(() => apiRequest("/notifications/read-all", { method: "POST" }), [keys.notifications, ["notification-center"]]);

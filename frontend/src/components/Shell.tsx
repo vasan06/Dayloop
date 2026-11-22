@@ -208,22 +208,45 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
       });
     } catch { /* Start with the reminders seen in this session. */ }
 
-    function deliver(key: string, label: string, title: string) {
+    function deliver(key: string, label: string, title: string, target?: { sourceType: "task" | "event"; sourceId: string; notificationId?: string }) {
       if (delivered.current.has(key)) return;
       delivered.current.add(key);
-      void showAlert(label, title, key).catch(() => { toast(`${label}: ${title}`); });
+      void showAlert(label, title, key, target).catch(() => { toast(`${label}: ${title}`); });
     }
     function checkDue() {
       const now = Date.now();
       const previousSize = delivered.current.size;
+      // Surface newly generated server notifications in Android's notification
+      // shade while DayLoop is running; the in-app center keeps the history.
+      for (const item of notificationCenter.data?.items ?? []) {
+        const created = Date.parse(item.created_at);
+        if (!item.read_at && Number.isFinite(created) && now - created >= 0 && now - created < 90_000) {
+          const kind = item.source_type === "task" || item.source_type === "habit" ? item.source_type : undefined;
+          if (!delivered.current.has(`inbox:${item.id}`)) {
+            delivered.current.add(`inbox:${item.id}`);
+            void showAlert(item.title, item.body, `inbox:${item.id}`, {
+              sourceType: kind, sourceId: item.source_id ?? undefined, notificationId: item.id,
+              clickPath: item.click_path ?? undefined,
+            }).catch(() => {});
+          }
+        }
+      }
       for (const task of notificationCenter.data?.tasks ?? []) {
         if (task.due_at && task.status !== "completed" && task.status !== "cancelled" && Date.parse(task.due_at) <= now) {
-          deliver(`task:${task.id}:${task.due_at}`, "Task due", task.title);
+          const key = `task:${task.id}:${task.due_at}`;
+          const freshInboxAlert = (notificationCenter.data?.items ?? []).some((item) =>
+            item.source_type === "task" && item.source_id === task.id &&
+            now - Date.parse(item.created_at) >= 0 && now - Date.parse(item.created_at) < 90_000);
+          if (freshInboxAlert) { delivered.current.add(key); continue; }
+          deliver(key, "Task due", task.title, {
+            sourceType: "task", sourceId: task.id,
+            notificationId: notificationCenter.data?.items.find((item) => item.source_type === "task" && item.source_id === task.id)?.id,
+          });
         }
       }
       for (const event of notificationCenter.data?.events ?? []) {
         if (Date.parse(event.start_at) <= now && now < Date.parse(event.end_at)) {
-          deliver(`event:${event.id}:${event.start_at}`, "Event now", event.title);
+          deliver(`event:${event.id}:${event.start_at}`, "Event now", event.title, { sourceType: "event", sourceId: event.id });
         }
       }
       if (previousSize !== delivered.current.size) safeSet(storageKey, JSON.stringify([...delivered.current]));
@@ -234,10 +257,11 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
         ...(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && task.status !== "completed" && task.status !== "cancelled").map((task) => ({
           key: `task:${task.id}:${task.due_at}`, title: "Task due", body: task.title, when: Date.parse(task.due_at!),
           notificationId: notificationCenter.data?.items.find((item) => item.source_type === "task" && item.source_id === task.id)?.id,
-          sourceType: "task",
+          sourceType: "task" as const, sourceId: task.id,
         })),
         ...(notificationCenter.data?.events ?? []).map((event) => ({
           key: `event:${event.id}:${event.start_at}`, title: "Calendar event", body: event.title, when: Date.parse(event.start_at),
+          sourceType: "event" as const, sourceId: event.id,
         })),
       ];
       void scheduleUpcomingAlerts(future).catch(() => {});
@@ -380,14 +404,14 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
               {permission !== "granted" && <button className="btn sm" onClick={() => void enableAlerts()}>{nativeAlerts ? "Enable Android notifications" : "Enable browser alerts"}</button>}
               {permission === "denied" && <p className="mute sm">{nativeAlerts ? "If permission was previously denied, open Android Settings → Apps → DayLoop → Notifications to allow alerts." : "Notifications are blocked. Change permission in browser site settings."}</p>}
               <div className="notification-section"><b>Now</b>
-                {(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && new Date(task.due_at) <= new Date()).slice(0, 8).map((task) => <button key={`task-${task.id}`} className="notification-row is-overdue" onClick={() => navigate(`/tasks/${task.id}`)}><span className="notification-kind">Due</span><span><b>{task.title}</b><small>{task.due_at ? `Overdue · ${new Date(task.due_at).toLocaleString()}` : "Due now"}</small></span></button>)}
+                {(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && new Date(task.due_at) <= new Date()).slice(0, 8).map((task) => <button key={`task-${task.id}`} className="notification-row is-overdue" onClick={() => navigate(`/notification-action?type=task&sourceId=${encodeURIComponent(task.id)}`)}><span className="notification-kind">Due</span><span><b>{task.title}</b><small>{task.due_at ? `Overdue · ${new Date(task.due_at).toLocaleString()}` : "Due now"}</small></span></button>)}
               </div>
               <div className="notification-section"><b>Today</b>
-                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at).toDateString() === new Date().toDateString()).map((event) => <button key={`event-${event.id}`} className="notification-row" onClick={() => navigate("/calendar")}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleTimeString()}</small></span></button>)}
+                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at).toDateString() === new Date().toDateString()).map((event) => <button key={`event-${event.id}`} className="notification-row" onClick={() => navigate(`/notification-action?type=event&sourceId=${encodeURIComponent(event.id)}`)}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleTimeString()}</small></span></button>)}
                 {(notificationCenter.data?.items ?? []).filter((item) => !item.read_at).slice(0, 6).map((item) => <button key={item.id} className="notification-row" onClick={() => navigate(item.source_type === "task" || item.source_type === "habit" ? `/notification-action?id=${item.id}` : item.click_path ?? "/")}><span className="notification-kind">Update</span><span><b>{item.title}</b><small>{item.body}</small></span><span className="notification-dismiss" role="button" aria-label={`Dismiss ${item.title}`} onClick={(event) => { event.stopPropagation(); dismissNotification.mutate(item.id); }}>×</span></button>)}
               </div>
               <div className="notification-section"><b>Upcoming</b>
-                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at) > new Date()).slice(0, 8).map((event) => <button key={`upcoming-${event.id}`} className="notification-row" onClick={() => navigate("/calendar")}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleString()}</small></span></button>)}
+                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at) > new Date()).slice(0, 8).map((event) => <button key={`upcoming-${event.id}`} className="notification-row" onClick={() => navigate(`/notification-action?type=event&sourceId=${encodeURIComponent(event.id)}`)}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleString()}</small></span></button>)}
               </div>
             </div>}
           </div>

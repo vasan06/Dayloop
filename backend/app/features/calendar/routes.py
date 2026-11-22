@@ -64,13 +64,33 @@ def create_event(payload: EventFields, user: dict = Depends(get_current_user)) -
 
 @router.patch("/events/{event_id}")
 def update_event(event_id: UUID, payload: dict, user: dict = Depends(get_current_user)) -> dict:
-    if "completed" not in payload:
+    updates = []
+    parameters = []
+    if "completed" in payload:
+        updates.append("completed_at=CASE WHEN %s THEN COALESCE(completed_at,now()) ELSE NULL END")
+        parameters.append(bool(payload["completed"]))
+    if "start_at" in payload or "end_at" in payload:
+        current = fetch_one(
+            "SELECT start_at,end_at FROM calendar_events WHERE id=%s AND user_id=%s",
+            (event_id, user["id"]),
+        )
+        if not current:
+            raise HTTPException(status_code=404, detail="Event not found.")
+        try:
+            start = datetime.fromisoformat(payload["start_at"]) if "start_at" in payload else current["start_at"]
+            end = datetime.fromisoformat(payload["end_at"]) if "end_at" in payload else current["end_at"]
+        except (TypeError, ValueError) as error:
+            raise HTTPException(status_code=422, detail="Invalid event date/time.") from error
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            raise HTTPException(status_code=422, detail="Event dates must include a timezone and end after start.")
+        updates.extend(["start_at=%s", "end_at=%s"])
+        parameters.extend([start, end])
+    if not updates:
         raise HTTPException(status_code=422, detail="No supported event changes were supplied.")
-    completed = bool(payload["completed"])
+    parameters.extend([event_id, user["id"]])
     event = fetch_one(
-        "UPDATE calendar_events SET completed_at=CASE WHEN %s THEN COALESCE(completed_at,now()) ELSE NULL END "
-        "WHERE id=%s AND user_id=%s RETURNING *",
-        (completed, event_id, user["id"]),
+        f"UPDATE calendar_events SET {','.join(updates)} WHERE id=%s AND user_id=%s RETURNING *",
+        tuple(parameters),
     )
     if not event:
         raise HTTPException(status_code=404, detail="Event not found.")
