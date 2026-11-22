@@ -50,7 +50,7 @@ export const useNotifications = (unreadOnly = false) => useQuery({ queryKey: [..
 export const useMarkNotificationRead = () => useAction((id: string) => apiRequest(`/notifications/${id}/read`, { method: "PATCH" }), [keys.notifications]);
 export const useNotificationCenter = () => useQuery({
   queryKey: ["notification-center"],
-  queryFn: () => apiRequest<{ items: Notification[]; tasks: Task[]; events: CalendarEvent[] }>("/notifications/center"),
+  queryFn: () => apiRequest<{ items: Notification[]; tasks: Task[]; events: CalendarEvent[]; upcoming: Array<{ id: string; title: string; body: string; source_type: string; source_id: string | null; scheduled_at: string }>; native_habits: Array<{ key: string; title: string; body: string; source_id: string; scheduled_at: string }> }>("/notifications/center"),
   refetchInterval: 60_000,
 });
 export const useMarkAllNotificationsRead = () =>
@@ -95,7 +95,7 @@ function useAction<V, R = unknown>(fn: (v: V) => Promise<R>, refresh: QueryKey[]
 
 const everything = [keys.insights, keys.summary];
 const taskQueries = [keys.tasks, keys.projects, keys.insights, ["streaks"], ["notification-center"], ["search"]];
-const habitQueries = [keys.habits, ["habit-entries"], ["habit-insights"], keys.insights, ["streaks"], ["search"]];
+const habitQueries = [keys.habits, ["habit-entries"], ["habit-insights"], keys.insights, ["streaks"], ["search"], ["notification-center"]];
 
 export const useCreateTask = () =>
   useAction((v: Partial<Task>) => apiRequest("/tasks", { method: "POST", ...json(v) }), taskQueries, "Task added");

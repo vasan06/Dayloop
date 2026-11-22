@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlarmClock, BellRing, Flag, Pause, Play, RotateCcw, TimerReset } from "lucide-react";
 import { Card, CardHead, PageHead, Seg, confetti } from "../components/ui";
 import { toast } from "../lib/toast";
+import { isoDate } from "../lib/format";
 import { cancelFocusReminder, nativeAlerts, requestAlertPermission, scheduleFocusReminder } from "../lib/notifications";
 
 type Mode = "focus" | "stopwatch" | "alarm";
@@ -9,7 +10,7 @@ type AlertState = { title: string; body: string } | null;
 type Lap = { id: number; total: number; split: number };
 
 const key = (name: string) => `dayloop:focus:${name}`;
-const todayKey = () => new Date().toISOString().slice(0, 10);
+const todayKey = () => isoDate();
 const fmt = (seconds: number) => {
   const safe = Math.max(0, Math.floor(seconds));
   const h = Math.floor(safe / 3600), m = Math.floor((safe % 3600) / 60), s = safe % 60;
@@ -20,7 +21,11 @@ const setVal = (name: string, value: string | number | null) => { try { value ==
 
 async function ensureNotificationPermission() {
   if (nativeAlerts) {
-    try { return await requestAlertPermission(); } catch { return "denied"; }
+    try {
+      const result = await requestAlertPermission();
+      if (result !== "granted") toast("Enable DayLoop notifications in Android app settings for timer and alarm alerts.", "error");
+      return result;
+    } catch { toast("Could not request Android notification permission.", "error"); return "denied"; }
   }
   if (typeof Notification === "undefined") return "unsupported";
   if (Notification.permission === "default") {
@@ -97,7 +102,6 @@ export default function Focus() {
   const progress = useMemo(()=>minutes ? Math.max(0,Math.min(100,(1-remaining/(minutes*60))*100)) : 0,[minutes,remaining]);
 
   const startFocus = () => {
-    void ensureNotificationPermission();
     if (remaining===0) setRemaining(minutes*60);
     if (focusRunning) {
       setFocusRunning(false); setFocusEnd(0); setVal("end", null);
@@ -105,7 +109,7 @@ export default function Focus() {
     } else {
       const duration = remaining===0 ? minutes*60 : remaining;
       const end = Date.now()+duration*1000; setFocusEnd(end); setVal("end",end); setFocusRunning(true);
-      void ensureNotificationPermission().then(() => scheduleFocusReminder("timer", end, "Focus complete", `${minutes} focused minutes finished.`));
+      void ensureNotificationPermission().then((permission) => permission === "granted" ? scheduleFocusReminder("timer", end, "Focus complete", `${minutes} focused minutes finished.`) : undefined).catch((error) => toast(error instanceof Error ? error.message : "Could not schedule focus alert.", "error"));
     }
   };
   const resetFocus = () => { setFocusRunning(false); setFocusEnd(0); setVal("end",null); setRemaining(minutes*60); void cancelFocusReminder("timer"); };
@@ -117,7 +121,7 @@ export default function Focus() {
   };
   const resetStopwatch=()=>{setElapsedBase(0);setElapsed(0);setStopwatchStart(0);setLaps([]);setVal("stopwatch-base",null);setVal("stopwatch-start",null);};
   const addLap=()=>{const previous=laps[0]?.total??0; setLaps((list)=>[{id:Date.now(),total:elapsed,split:elapsed-previous},...list]);};
-  const snooze=(mins:number)=>{const until=Date.now()+mins*60_000;setSnoozedUntil(until);setVal("snooze",until);setAlert(null);void scheduleFocusReminder("snooze",until,"Snoozed reminder","Your DayLoop reminder is due now.");void notify("Reminder snoozed",`We'll notify you again in ${mins} minutes.`);};
+  const snooze=(mins:number)=>{const until=Date.now()+mins*60_000;setSnoozedUntil(until);setVal("snooze",until);setAlert(null);void scheduleFocusReminder("snooze",until,"Snoozed reminder","Your DayLoop reminder is due now.").catch((error)=>toast(error instanceof Error?error.message:"Could not schedule snooze.","error"));void notify("Reminder snoozed",`We'll notify you again in ${mins} minutes.`);};
 
   return <>
     <PageHead title="Focus" sub="Timer, stopwatch, laps and alarms that stay active while you move around DayLoop">
@@ -138,7 +142,7 @@ export default function Focus() {
         </>}
         {mode==="alarm" && <>
           <div className="alarm-face"><AlarmClock/><input type="time" value={alarmTime} onChange={(e)=>{setAlarmTime(e.target.value);localStorage.setItem(key("alarm-time"),e.target.value);setAlarmArmed(false);setVal("alarm-armed",null);void cancelFocusReminder("alarm");}}/></div>
-          <div className="focus-actions"><button className={alarmArmed?"btn pri":"btn"} onClick={()=>{void ensureNotificationPermission().then(()=>{const next=!alarmArmed;setAlarmArmed(next);setVal("alarm-armed",next?"1":null);if(next){const [hh,mm]=alarmTime.split(":").map(Number);const when=new Date();when.setHours(hh,mm,0,0);if(when.getTime()<=Date.now())when.setDate(when.getDate()+1);void scheduleFocusReminder("alarm",when.getTime(),"DayLoop alarm",`Alarm for ${alarmTime}`);}else void cancelFocusReminder("alarm");});}}>{alarmArmed?"Alarm armed":"Set alarm"}</button></div>
+          <div className="focus-actions"><button className={alarmArmed?"btn pri":"btn"} onClick={()=>{void ensureNotificationPermission().then(async(permission)=>{if(permission!=="granted")return;const next=!alarmArmed;if(next){const [hh,mm]=alarmTime.split(":").map(Number);const when=new Date();when.setHours(hh,mm,0,0);if(when.getTime()<=Date.now())when.setDate(when.getDate()+1);await scheduleFocusReminder("alarm",when.getTime(),"DayLoop alarm",`Alarm for ${alarmTime}`);}else await cancelFocusReminder("alarm");setAlarmArmed(next);setVal("alarm-armed",next?"1":null);}).catch((error)=>toast(error instanceof Error?error.message:"Could not schedule alarm.","error"));}}>{alarmArmed?"Alarm armed":"Set alarm"}</button></div>
           {snoozedUntil>0&&<p className="mute sm">Snoozed until {new Date(snoozedUntil).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</p>}
         </>}
       </Card>

@@ -2,8 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
-import { scheduleFocusReminder } from "../lib/notifications";
-import type { Notification } from "../lib/types";
+import { scheduleFocusReminder, scheduleHabitSnooze } from "../lib/notifications";
+import type { Habit, Notification } from "../lib/types";
 
 type Target = { id: string; title: string; body?: string; due_at?: string; start_at?: string; end_at?: string };
 type Action = "complete" | "skip" | "snooze" | "reschedule" | "clear";
@@ -21,6 +21,7 @@ export default function NotificationAction() {
   const requestedType = params.get("type");
   const [item, setItem] = useState<Notification | null>(null);
   const [target, setTarget] = useState<Target | null>(null);
+  const [habit, setHabit] = useState<Habit | null>(null);
   const [kind, setKind] = useState(requestedType || "");
   const requestedAction = params.get("action");
   const validActions: Action[] = ["complete", "skip", "snooze", "reschedule", "clear"];
@@ -33,15 +34,17 @@ export default function NotificationAction() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(Boolean(id || sourceId));
   const [error, setError] = useState("");
+  const goBack = () => Number(window.history.state?.idx ?? 0) > 0
+    ? navigate(-1) : navigate(kind === "task" ? "/tasks" : kind === "event" ? "/calendar" : kind === "habit" ? "/habits" : "/focus", { replace: true });
 
   useEffect(() => {
     let active = true;
     async function load() {
       try {
         let notification: Notification | undefined;
-        if (id) {
+        if (id || (requestedType === "habit" && sourceId)) {
           const response = await apiRequest<{ items: Notification[] }>("/notifications");
-          notification = response.items.find((entry) => entry.id === id);
+          notification = response.items.find((entry) => id ? entry.id === id : entry.source_type === "habit" && entry.source_id === sourceId);
           if (active) { setItem(notification ?? null); if (notification && !requestedType) setKind(notification.source_type || ""); }
         }
         const type = requestedType || notification?.source_type;
@@ -54,6 +57,10 @@ export default function NotificationAction() {
             setTarget(match);
             if (match?.due_at || match?.start_at) setDate(toLocal(new Date(match.due_at || match.start_at!)));
           }
+        }
+        if (type === "habit" && record) {
+          const response = await apiRequest<{ items: Habit[] }>("/habits");
+          if (active) setHabit(response.items.find((entry) => entry.id === record) ?? null);
         }
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : "Could not load the notification.");
@@ -72,11 +79,12 @@ export default function NotificationAction() {
     setError("");
     try {
       const record = sourceId || item?.source_id;
+      const currentNotificationId = id || item?.id;
       const targetPage = kind === "task" ? "/tasks" : kind === "event" ? "/calendar" : kind === "habit" ? "/habits" : "/focus";
       if (kind === "focus") {
         if (action === "snooze") await scheduleFocusReminder("snooze", Date.now() + minutes * 60000, "Snoozed reminder", "Your DayLoop reminder is due now.");
       } else if (action === "clear") {
-        if (id) await apiRequest(`/notifications/${id}/dismiss`, { method: "PATCH" });
+        if (currentNotificationId) await apiRequest(`/notifications/${currentNotificationId}/dismiss`, { method: "PATCH" });
       } else if (action === "reschedule" && record && (kind === "task" || kind === "event")) {
         const when = new Date(date);
         if (!Number.isFinite(when.getTime()) || when.getTime() <= Date.now()) throw new Error("Choose a future date and time.");
@@ -90,15 +98,30 @@ export default function NotificationAction() {
             start_at: when.toISOString(), end_at: new Date(when.getTime() + duration).toISOString(),
           }) });
         }
-        if (id) await apiRequest(`/notifications/${id}/dismiss`, { method: "PATCH" });
+        if (currentNotificationId) await apiRequest(`/notifications/${currentNotificationId}/dismiss`, { method: "PATCH" });
       } else if (kind === "task" && record && action === "complete") {
         await apiRequest(`/tasks/${record}`, { method: "PATCH", body: JSON.stringify({ status: "completed" }) });
-        if (id) await apiRequest(`/notifications/${id}/dismiss`, { method: "PATCH" });
+        if (currentNotificationId) await apiRequest(`/notifications/${currentNotificationId}/dismiss`, { method: "PATCH" });
       } else if (kind === "event" && record && action === "complete") {
         await apiRequest(`/calendar/events/${record}`, { method: "PATCH", body: JSON.stringify({ completed: true }) });
-        if (id) await apiRequest(`/notifications/${id}/dismiss`, { method: "PATCH" });
-      } else if (id && ["complete", "skip", "snooze"].includes(action)) {
-        await apiRequest(`/notifications/${id}/action`, {
+        if (currentNotificationId) await apiRequest(`/notifications/${currentNotificationId}/dismiss`, { method: "PATCH" });
+      } else if (kind === "habit" && record && !id && !item?.id && (action === "complete" || action === "skip")) {
+        // Android can fire a scheduled habit reminder while the backend job
+        // is still pending. Save directly to the user's habit in that case.
+        if (!habit) throw new Error("This habit could not be loaded. Reopen the reminder and try again.");
+        const parts = new Intl.DateTimeFormat("en-US", { timeZone: habit.timezone,
+          year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+        const part = (name: string) => parts.find((entry) => entry.type === name)?.value ?? "";
+        const localDay = `${part("year")}-${part("month")}-${part("day")}`;
+        await apiRequest(`/habits/${record}/entries/${localDay}`, {
+          method: "PUT",
+          body: JSON.stringify({ status: action === "complete" ? "completed" : "skipped", note,
+            ...(value.trim() ? { value: Number(value) } : {}) }),
+        });
+      } else if (kind === "habit" && record && !id && !item?.id && action === "snooze") {
+        await scheduleHabitSnooze(record, Date.now() + minutes * 60000);
+      } else if ((id || item?.id) && ["complete", "skip", "snooze"].includes(action)) {
+        await apiRequest(`/notifications/${id || item?.id}/action`, {
           method: "POST",
           body: JSON.stringify({ action, note, minutes, ...(value.trim() ? { value: Number(value) } : {}) }),
         });
@@ -115,37 +138,40 @@ export default function NotificationAction() {
   }
 
   const kindLabel = kind === "task" ? "Task" : kind === "event" ? "Calendar event" : kind === "habit" ? "Habit" : "Focus reminder";
-  return <main className="card" style={{ maxWidth: 460, margin: "6vh auto", padding: 24 }}>
-    <h1>{kindLabel} action</h1>
-    <p>{target?.title || item?.title || (kind === "focus" ? "Focus timer or alarm" : loading ? "Loading notification…" : "Notification")}</p>
-    {(target?.body || item?.body) && <p className="mute">{target?.body || item?.body}</p>}
+  return <main className="reminder-page">
+    <section className="reminder-card">
+    <button className="reminder-back" type="button" onClick={goBack}>← Back</button>
+    <div className="reminder-eyebrow">{kindLabel} reminder</div>
+    <h1>{target?.title || habit?.name || item?.title || (kind === "focus" ? "Focus timer or alarm" : loading ? "Loading notification…" : "Notification")}</h1>
+    {(target?.body || item?.body) && <p className="reminder-body">{target?.body || item?.body}</p>}
     {error && <p role="alert" className="err">{error}</p>}
     <form onSubmit={(event) => void submit(event)}>
-      <label>What would you like to do?
-        <select value={action} onChange={(event) => setAction(event.target.value as Action)}>
-          {kind !== "focus" && <option value="complete">{kind === "habit" ? "Record completed" : "Mark done"}</option>}
-          {kind === "habit" && <option value="skip">Skip habit</option>}
-          {(kind === "task" || kind === "event") && <option value="reschedule">Reschedule</option>}
-          {(kind === "habit" || kind === "focus") && <option value="snooze">Remind me later</option>}
-          <option value="clear">Clear alert</option>
-        </select>
-      </label>
+      <fieldset className="reminder-choices"><legend>What would you like to do?</legend>
+        {([
+          ...(kind !== "focus" ? [{ id: "complete", label: kind === "habit" ? "Record completed" : "Mark done" }] : []),
+          ...(kind === "habit" ? [{ id: "skip", label: "Skip habit" }] : []),
+          ...(kind === "task" || kind === "event" ? [{ id: "reschedule", label: "Reschedule" }] : []),
+          ...(kind === "habit" || kind === "focus" ? [{ id: "snooze", label: "Remind me later" }] : []),
+          { id: "clear", label: "Clear alert" },
+        ] as Array<{ id: Action; label: string }>).map((choice) => <label className={action === choice.id ? "reminder-choice selected" : "reminder-choice"} key={choice.id}><input type="radio" name="reminder-action" checked={action === choice.id} onChange={() => setAction(choice.id)} /><span>{choice.label}</span></label>)}
+      </fieldset>
       {action === "reschedule" && <label>New date and time
         <input type="datetime-local" required value={date} min={toLocal(new Date())} onChange={(event) => setDate(event.target.value)} />
       </label>}
       {action === "snooze" && <label>Remind after (minutes)
         <input type="number" min={1} max={1440} required value={minutes} onChange={(event) => setMinutes(Number(event.target.value))} />
       </label>}
-      {kind === "habit" && action === "complete" && <label>Progress value (optional)
-        <input type="number" step="any" value={value} onChange={(event) => setValue(event.target.value)} />
+      {kind === "habit" && action === "complete" && habit && (habit.measurement_type === "quantity" || habit.measurement_type === "duration") && <label>{habit.unit ? `Progress (${habit.unit})` : "Progress"}
+        <input type="number" min={0} step="0.001" required value={value} onChange={(event) => setValue(event.target.value)} />
       </label>}
-      {kind === "habit" && (action === "complete" || action === "skip") && <label>Note or response (optional)
-        <input type="text" value={note} onChange={(event) => setNote(event.target.value)} />
+      {kind === "habit" && (action === "complete" || action === "skip") && <label>{action === "skip" ? "Reason for skipping" : habit?.daily_note_required || habit?.measurement_type === "text" ? "Note or response" : "Note or response (optional)"}
+        <input type="text" required={action === "skip" || Boolean(habit?.daily_note_required) || habit?.measurement_type === "text"} value={note} onChange={(event) => setNote(event.target.value)} />
       </label>}
-      <div className="row" style={{ marginTop: 16, gap: 8 }}>
+      <div className="reminder-footer">
         <button className="btn pri" disabled={busy || loading}>{busy ? "Saving…" : "Apply action"}</button>
-        <button className="btn" type="button" onClick={() => navigate(-1)}>Cancel</button>
+        <button className="btn" type="button" onClick={goBack}>Cancel</button>
       </div>
     </form>
+    </section>
   </main>;
 }

@@ -7,14 +7,14 @@ import {
 } from "lucide-react";
 import { useDismissNotification, useMarkAllNotificationsRead, useNotificationCenter, useProfile, useSearch, useStreakOverview } from "../hooks/data";
 import { toast } from "../lib/toast";
-import { initials } from "../lib/format";
+import { initials, isoDate } from "../lib/format";
 import { setTheme, useTheme } from "../hooks/useTheme";
 import { Modal, Toaster } from "./ui";
 import { AxisBars } from "./InteractiveCharts";
 import { apiRequest } from "../lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { isNativeMobile } from "../lib/mobileData";
-import { alertPermission, nativeAlerts, registerNotificationActions, requestAlertPermission, scheduleUpcomingAlerts, showAlert, type AlertPermission } from "../lib/notifications";
+import { alertPermission, nativeAlerts, requestAlertPermission, scheduleUpcomingAlerts, showAlert, type AlertPermission } from "../lib/notifications";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -88,11 +88,16 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   const location = useLocation();
   const navigate = useNavigate();
   useEffect(() => {
-    let dispose: (() => void) | undefined;
-    let active = true;
-    void registerNotificationActions((path) => navigate(path)).then((stop) => { if (active) dispose = stop; else stop(); });
-    return () => { active = false; dispose?.(); };
-  }, [navigate]);
+    const closeOverlay = (event: Event) => {
+      const open = feedbackOpen || streakOpen || paletteOpen || browseOpen || notificationsOpen || profileOpen;
+      if (!open) return;
+      event.preventDefault();
+      setFeedbackOpen(false); setStreakOpen(false); setPaletteOpen(false);
+      setBrowseOpen(false); setNotificationsOpen(false); setProfileOpen(false);
+    };
+    window.addEventListener("dayloop:back-overlay", closeOverlay);
+    return () => window.removeEventListener("dayloop:back-overlay", closeOverlay);
+  }, [feedbackOpen, streakOpen, paletteOpen, browseOpen, notificationsOpen, profileOpen]);
   const profile = useProfile();
   const notificationCenter = useNotificationCenter();
   const markAllRead = useMarkAllNotificationsRead();
@@ -165,13 +170,16 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
       toast(`${title}: ${body}`);
     };
     const tick = () => {
+      // Focus owns its timers while that screen is mounted. Running both
+      // intervals can record the same session twice and show duplicate alerts.
+      if (window.location.pathname === "/focus") return;
       const now = Date.now();
       const focusEnd = Number(safeGet("dayloop:focus:end") || 0);
       if (focusEnd && now >= focusEnd) {
         const mins = Number(safeGet("dayloop:focus:minutes") || 25);
         safeSet("dayloop:focus:end", "");
         try { localStorage.removeItem("dayloop:focus:end"); } catch {}
-        const totalKey = `dayloop:focus:total:${new Date().toISOString().slice(0, 10)}`;
+        const totalKey = `dayloop:focus:total:${isoDate()}`;
         const total = Number(safeGet(totalKey) || 0);
         safeSet(totalKey, String(total + mins * 60));
         void notifyFocus("Focus complete", `${mins} focused minutes finished.`);
@@ -185,7 +193,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
         const alarmTime = safeGet("dayloop:focus:alarm-time") || "";
         const current = new Date();
         const hhmm = `${String(current.getHours()).padStart(2, "0")}:${String(current.getMinutes()).padStart(2, "0")}`;
-        const firedKey = `dayloop:focus:alarm-fired:${current.toISOString().slice(0, 10)}:${alarmTime}`;
+        const firedKey = `dayloop:focus:alarm-fired:${isoDate(current)}:${alarmTime}`;
         if (alarmTime && hhmm === alarmTime && safeGet(firedKey) !== "1") {
           safeSet(firedKey, "1");
           try { localStorage.removeItem("dayloop:focus:alarm-armed"); } catch {}
@@ -199,7 +207,6 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   }, []);
 
   useEffect(() => {
-    if (permission !== "granted") return;
     const storageKey = `dayloop:notified:${identity}`;
     try {
       const previous: unknown = JSON.parse(safeGet(storageKey) ?? "[]");
@@ -209,9 +216,11 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
     } catch { /* Start with the reminders seen in this session. */ }
 
     function deliver(key: string, label: string, title: string, target?: { sourceType: "task" | "event"; sourceId: string; notificationId?: string }) {
-      if (delivered.current.has(key)) return;
+      // Android's scheduled notification is the single OS delivery path.
+      if (nativeAlerts) return;
+      if (permission !== "granted" || delivered.current.has(key)) return;
       delivered.current.add(key);
-      void showAlert(label, title, key, target).catch(() => { toast(`${label}: ${title}`); });
+      void showAlert(label, title, key, target).catch(() => { delivered.current.delete(key); toast(`${label}: ${title}`); });
     }
     function checkDue() {
       const now = Date.now();
@@ -221,13 +230,16 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
       for (const item of notificationCenter.data?.items ?? []) {
         const created = Date.parse(item.created_at);
         if (!item.read_at && Number.isFinite(created) && now - created >= 0 && now - created < 90_000) {
+          // Android already receives these sources through local schedules.
+          // The server entry is retained in the in-app inbox as history.
+          if (nativeAlerts && ["task", "habit", "event"].includes(item.source_type ?? "")) continue;
           const kind = item.source_type === "task" || item.source_type === "habit" ? item.source_type : undefined;
-          if (!delivered.current.has(`inbox:${item.id}`)) {
+          if (permission === "granted" && !delivered.current.has(`inbox:${item.id}`)) {
             delivered.current.add(`inbox:${item.id}`);
             void showAlert(item.title, item.body, `inbox:${item.id}`, {
               sourceType: kind, sourceId: item.source_id ?? undefined, notificationId: item.id,
               clickPath: item.click_path ?? undefined,
-            }).catch(() => {});
+            }).catch(() => { delivered.current.delete(`inbox:${item.id}`); });
           }
         }
       }
@@ -252,7 +264,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
       if (previousSize !== delivered.current.size) safeSet(storageKey, JSON.stringify([...delivered.current]));
     }
     checkDue();
-    if (nativeAlerts) {
+    if (nativeAlerts && permission === "granted") {
       const future = [
         ...(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && task.status !== "completed" && task.status !== "cancelled").map((task) => ({
           key: `task:${task.id}:${task.due_at}`, title: "Task due", body: task.title, when: Date.parse(task.due_at!),
@@ -263,8 +275,12 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
           key: `event:${event.id}:${event.start_at}`, title: "Calendar event", body: event.title, when: Date.parse(event.start_at),
           sourceType: "event" as const, sourceId: event.id,
         })),
+        ...(notificationCenter.data?.native_habits ?? []).map((alert) => ({
+          key: alert.key, title: alert.title, body: alert.body, when: Date.parse(alert.scheduled_at),
+          sourceType: "habit" as const, sourceId: alert.source_id,
+        })),
       ];
-      void scheduleUpcomingAlerts(future).catch(() => {});
+      void scheduleUpcomingAlerts(future).catch((error) => toast(error instanceof Error ? error.message : "Could not schedule reminders.", "error"));
     }
     const timer = window.setInterval(checkDue, 30_000);
     return () => window.clearInterval(timer);
@@ -401,16 +417,19 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
             </button>
             {notificationsOpen && <div className="notification-center" role="dialog" aria-label="Notification center">
               <div className="notification-center-head"><b>Notifications</b><button className="notification-read-all" onClick={() => markAllRead.mutate(undefined as never)} disabled={markAllRead.isPending || unreadCount === 0}><CheckCheck className="ic" />{unreadCount ? "Mark all read" : "All caught up"}</button></div>
+              {notificationCenter.isError && <p className="err" role="alert">Could not load notifications. Check your connection and reopen this panel.</p>}
               {permission !== "granted" && <button className="btn sm" onClick={() => void enableAlerts()}>{nativeAlerts ? "Enable Android notifications" : "Enable browser alerts"}</button>}
               {permission === "denied" && <p className="mute sm">{nativeAlerts ? "If permission was previously denied, open Android Settings → Apps → DayLoop → Notifications to allow alerts." : "Notifications are blocked. Change permission in browser site settings."}</p>}
               <div className="notification-section"><b>Now</b>
                 {(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && new Date(task.due_at) <= new Date()).slice(0, 8).map((task) => <button key={`task-${task.id}`} className="notification-row is-overdue" onClick={() => navigate(`/notification-action?type=task&sourceId=${encodeURIComponent(task.id)}`)}><span className="notification-kind">Due</span><span><b>{task.title}</b><small>{task.due_at ? `Overdue · ${new Date(task.due_at).toLocaleString()}` : "Due now"}</small></span></button>)}
+                {(notificationCenter.data?.upcoming ?? []).filter((job) => job.source_type === "habit" && Date.parse(job.scheduled_at) <= Date.now()).slice(0, 8).map((job) => <button key={`due-habit-${job.id}`} className="notification-row is-overdue" onClick={() => navigate(job.source_id ? `/notification-action?type=habit&sourceId=${encodeURIComponent(job.source_id)}` : "/habits")}><span className="notification-kind">Habit</span><span><b>{job.title}</b><small>{job.body}</small></span></button>)}
               </div>
               <div className="notification-section"><b>Today</b>
                 {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at).toDateString() === new Date().toDateString()).map((event) => <button key={`event-${event.id}`} className="notification-row" onClick={() => navigate(`/notification-action?type=event&sourceId=${encodeURIComponent(event.id)}`)}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleTimeString()}</small></span></button>)}
                 {(notificationCenter.data?.items ?? []).filter((item) => !item.read_at).slice(0, 6).map((item) => <button key={item.id} className="notification-row" onClick={() => navigate(item.source_type === "task" || item.source_type === "habit" ? `/notification-action?id=${item.id}` : item.click_path ?? "/")}><span className="notification-kind">Update</span><span><b>{item.title}</b><small>{item.body}</small></span><span className="notification-dismiss" role="button" aria-label={`Dismiss ${item.title}`} onClick={(event) => { event.stopPropagation(); dismissNotification.mutate(item.id); }}>×</span></button>)}
               </div>
               <div className="notification-section"><b>Upcoming</b>
+                {(notificationCenter.data?.upcoming ?? []).filter((job) => job.source_type === "habit").slice(0, 8).map((job) => <button key={job.id} className="notification-row" onClick={() => navigate("/habits")}><span className="notification-kind">Habit</span><span><b>{job.title}</b><small>{new Date(job.scheduled_at).toLocaleString()}</small></span></button>)}
                 {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at) > new Date()).slice(0, 8).map((event) => <button key={`upcoming-${event.id}`} className="notification-row" onClick={() => navigate(`/notification-action?type=event&sourceId=${encodeURIComponent(event.id)}`)}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleString()}</small></span></button>)}
               </div>
             </div>}

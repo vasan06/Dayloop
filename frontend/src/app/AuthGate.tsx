@@ -251,6 +251,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
     if (!firebaseAuth) return;
     setError("");
     setBusy(true);
+    let stage = "native account selection";
     try {
       if (!isNativeMobile) await setPersistence(firebaseAuth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       const provider = new GoogleAuthProvider();
@@ -270,12 +271,19 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
         if (!idToken) {
           throw new Error("Google sign-in did not return an ID token. Check Firebase Android app configuration and SHA-1 fingerprint.");
         }
+        stage = "Firebase credential exchange";
         await signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken));
       } else {
+        stage = "browser popup";
         await signInWithPopup(firebaseAuth, provider);
       }
     } catch (reason) {
-      setError(authErrorMessage(reason, "Google sign-in failed."));
+      const code = typeof reason === "object" && reason !== null && "code" in reason
+        ? String((reason as { code?: unknown }).code ?? "") : "";
+      console.warn("Google sign-in failed", { stage, code: code || "unavailable" });
+      setError(code === "auth/invalid-credential"
+        ? "Google sign-in was rejected by Firebase. Check that this APK's signing SHA-1 is registered in the Android Firebase app and rebuild with the matching google-services.json."
+        : authErrorMessage(reason, "Google sign-in failed."));
     } finally {
       setBusy(false);
     }

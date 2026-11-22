@@ -33,6 +33,7 @@ export type Project = {
 
 export type Habit = {
   id: string;
+    timezone: string;
   name: string;
   description: string;
   habit_type: "positive" | "negative";

@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { App as CapacitorApp } from "@capacitor/app";
 import { getSyncValue, isNativeMobile } from "../lib/mobileData";
 import { openMobileWorkspace, preloadMobileWorkspace, scheduleMobileSync } from "../lib/mobileApi";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "../lib/toast";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { registerNotificationActions } from "../lib/notifications";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import AuthGate from "./AuthGate";
 import Shell from "../components/Shell";
 const Dashboard = lazy(() => import("../pages/Dashboard"));
@@ -58,6 +60,39 @@ function WorkspaceSession({ children }: { children: ReactNode }) {
 
 export default function App() {
   const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!isNativeMobile) return;
+    // Capacitor's backButton event handles both Android gesture navigation and
+    // the hardware key. Avoid overriding BridgeActivity.onBackPressed(), which
+    // can bypass AndroidX back dispatch on newer Android versions.
+    let active = true;
+    let remove: (() => void) | undefined;
+    void CapacitorApp.addListener("backButton", () => {
+      const overlay = new Event("dayloop:back-overlay", { cancelable: true });
+      window.dispatchEvent(overlay);
+      if (overlay.defaultPrevented) return;
+      const index = Number(window.history.state?.idx ?? 0);
+      if (index > 0) navigate(-1);
+      else if (/^\/tasks\/[^/]+/.test(window.location.pathname)) navigate("/tasks", { replace: true });
+      else if (/^\/projects\/[^/]+/.test(window.location.pathname)) navigate("/projects", { replace: true });
+      else if (window.location.pathname !== "/") navigate("/", { replace: true });
+      // At the workspace root, stay in DayLoop instead of closing the app.
+    }).then((handle) => {
+      if (active) remove = () => { void handle.remove(); };
+      else void handle.remove();
+    }).catch((error) => console.warn("Android back navigation unavailable", error));
+    return () => { active = false; remove?.(); };
+  }, [navigate]);
+  useEffect(() => {
+    let active = true;
+    let dispose: (() => void) | undefined;
+    void registerNotificationActions((path) => navigate(path)).then((stop) => {
+      if (active) dispose = stop;
+      else stop();
+    }).catch((error) => console.warn("Notification actions unavailable", error instanceof Error ? error.message : "unknown"));
+    return () => { active = false; dispose?.(); };
+  }, [navigate]);
   if (location.pathname.startsWith("/admin")) return <Suspense fallback={<div className="boot">Opening admin…</div>}><Admin /></Suspense>;
   return (
     <AuthGate>
