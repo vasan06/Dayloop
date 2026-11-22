@@ -258,7 +258,14 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
         // A WebView redirect may leave DayLoop blank after the Google chooser.
         // Use native Google account selection and exchange the resulting ID token
         // for the SAME Firebase web user used by all DayLoop API requests.
-        const native = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+        // Credential Manager can return Android [16] Account reauth failed on
+        // some devices even when Firebase and SHA-1 are configured correctly.
+        // Use the Google Sign-In intent instead, keeping the Firebase Web SDK
+        // as the single authenticated session for DayLoop API requests.
+        const native = await FirebaseAuthentication.signInWithGoogle({
+          skipNativeAuth: true,
+          useCredentialManager: false,
+        });
         const idToken = native.credential?.idToken;
         if (!idToken) {
           throw new Error("Google sign-in did not return an ID token. Check Firebase Android app configuration and SHA-1 fingerprint.");
