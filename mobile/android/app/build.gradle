@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+def internalSigningStore = providers.environmentVariable('DAYLOOP_ANDROID_SIGNING_STORE_FILE')
+
 android {
     namespace = "com.dayloop.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +9,8 @@ android {
         applicationId "com.dayloop.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 12
+        versionName "1.0.12"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +18,26 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (internalSigningStore.isPresent()) {
+            internal {
+                storeFile = file(internalSigningStore.get())
+                storePassword = 'android'
+                keyAlias = 'androiddebugkey'
+                keyPassword = 'android'
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        internal {
+            initWith release
+            // CI uses the exact Firebase-registered keystore it verifies before building.
+            signingConfig = internalSigningStore.isPresent() ? signingConfigs.internal : signingConfigs.debug
+            matchingFallbacks = ['release']
         }
     }
 }
@@ -35,6 +53,7 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "com.google.android.gms:play-services-auth:$playServicesAuthVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

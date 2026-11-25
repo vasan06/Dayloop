@@ -18,19 +18,23 @@ npx cap sync android
 npx cap open android
 ```
 
-Use Android Studio to build or run. The GitHub Actions workflow generates a debug APK automatically; the `android/` native project is maintained here, and the workflow creates it only when missing.
+Use Android Studio to build or run. The `android/` native project is maintained here, and the GitHub Actions workflow packages the shared React frontend for Android.
 
 ## API and Firebase
 
 - A phone cannot connect to your computer's `localhost` API. Provide a public HTTPS Python API endpoint via the GitHub Actions repository variable `DAYLOOP_API_URL` (including `/api/v1`). Without it, the APK builds but network-backed features cannot work away from a configured API.
 - Configure the existing `VITE_FIREBASE_*` repository variables (Firebase **web** configuration) for the mobile web bundle; these are client configuration, not service-account keys.
 - Keep Firebase Admin credentials and PostgreSQL connection strings on the backend only.
-- Firebase email/password authentication can use the existing web Firebase SDK. Google popup/redirect sign-in in Android WebView requires a separate native auth integration and Android app registration; do not assume it works from this wrapper unchanged.
-- Register Android package `com.dayloop.app` in the **same Firebase project** when enabling native Android integrations. Keep `google-services.json` out of Git until a vetted native Firebase integration needs it.
+- Email/password uses the web Firebase SDK. Android Google sign-in gets a Google ID token natively and exchanges it with the web Firebase SDK. The Android package, signing certificate SHA‑1, and matching web OAuth client must be registered in the same Firebase project.
+- The checked-in `google-services.json` contains public Firebase client configuration for `com.dayloop.app`. CI can supply an updated copy through the `FIREBASE_ANDROID_JSON_BASE64` secret.
 - Never enable the local development identity on a publicly reachable backend.
 
 ## CI
 
-Go to **Actions → Android Debug APK → Run workflow**. Download artifact `dayloop-android-debug-apk`. This debug APK is not a Play Store release and is unsigned with a production keystore. For distribution, introduce a protected release signing workflow and proper keystore/secrets.
+Go to **Actions → Android Internal APK → Run workflow**, select the build branch, and download `app-internal.apk` from the existing artifact `dayloop-android-debug-apk`. The workflow builds the non-debuggable `internal` variant, explicitly selects the keystore from `DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64`, and checks that the finished APK matches the Firebase-registered signing certificate. Build 12 uses Android version code 12 and version name 1.0.12.
+
+Android requires the installed app and update to have the same signing identity. The v1.0 GitHub Release APK and the last baseline CI APK carry different certificates from the Firebase-registered internal key. Use a fresh device or emulator for Build 12 testing if you have one of those installations. Preserve the existing installation until its pending local changes and conflicts have been exported and reconciled.
+
+For a local smoke build, install JDK 21 and Android SDK Platform 36, point `ANDROID_HOME` at that SDK, and run the frontend build and Capacitor sync above. You can set `VITE_API_URL=https://dayloop.invalid/api/v1` for a build where network-backed features are intentionally unavailable. Then run `./gradlew assembleInternal` from `mobile/android`. Without the CI keystore, the local APK uses your local Android debug certificate. It can be installed on a fresh emulator to check startup, but its certificate will differ from existing signed installs and Firebase Google sign-in requires a registered certificate. Use an emulator or separate test device to keep existing installations and data intact.
 
 The service worker, browser push, OAuth popups, background alarms, filesystem attachments and offline data sync need platform-specific testing; creating an Android APK does not convert them automatically into native platform capabilities.

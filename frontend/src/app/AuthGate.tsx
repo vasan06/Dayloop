@@ -19,9 +19,14 @@ import {
 } from "firebase/auth";
 import { apiRequest } from "../lib/api";
 import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { firebaseAuth, firebaseConfigured, firebaseMissingConfig } from "../lib/firebase";
 import { deactivateMobileAccount, isNativeMobile } from "../lib/mobileData";
 import { resetMobileWorkspace } from "../lib/mobileApi";
+
+const DayLoopGoogleSignIn = registerPlugin<{
+  signIn(): Promise<{ idToken: string }>;
+}>("DayLoopGoogleSignIn");
 
 type Profile = {
   email: string | null;
@@ -253,37 +258,35 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
     setBusy(true);
     let stage = "native account selection";
     try {
-      if (!isNativeMobile) await setPersistence(firebaseAuth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
-      const provider = new GoogleAuthProvider();
       if (isNativeMobile) {
-        // A WebView redirect may leave DayLoop blank after the Google chooser.
-        // Use native Google account selection and exchange the resulting ID token
-        // for the SAME Firebase web user used by all DayLoop API requests.
-        // Credential Manager can return Android [16] Account reauth failed on
-        // some devices even when Firebase and SHA-1 are configured correctly.
-        // Use the Google Sign-In intent instead, keeping the Firebase Web SDK
-        // as the single authenticated session for DayLoop API requests.
-        const native = await FirebaseAuthentication.signInWithGoogle({
-          skipNativeAuth: true,
-          useCredentialManager: false,
-        });
-        const idToken = native.credential?.idToken;
-        if (!idToken) {
-          throw new Error("Google sign-in did not return an ID token. Check Firebase Android app configuration and SHA-1 fingerprint.");
-        }
+        const idToken = Capacitor.getPlatform() === "android"
+          ? (await DayLoopGoogleSignIn.signIn()).idToken
+          : (await FirebaseAuthentication.signInWithGoogle({
+            skipNativeAuth: true,
+            useCredentialManager: false,
+          })).credential?.idToken;
+        if (!idToken) throw new Error("Google sign-in did not return an ID token. Try again or sign in with email.");
         stage = "Firebase credential exchange";
         await signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken));
       } else {
         stage = "browser popup";
-        await signInWithPopup(firebaseAuth, provider);
+        await setPersistence(firebaseAuth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+        await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
       }
     } catch (reason) {
       const code = typeof reason === "object" && reason !== null && "code" in reason
         ? String((reason as { code?: unknown }).code ?? "") : "";
+      if (code === "google/cancelled") return;
       console.warn("Google sign-in failed", { stage, code: code || "unavailable" });
-      setError(code === "auth/invalid-credential"
-        ? "Google sign-in was rejected by Firebase. Check that this APK's signing SHA-1 is registered in the Android Firebase app and rebuild with the matching google-services.json."
-        : authErrorMessage(reason, "Google sign-in failed."));
+      if (code === "google/configuration") {
+        setError("Google sign-in is unavailable in this APK. Use email or install a build with a registered signing certificate.");
+      } else if (code === "google/network") {
+        setError("Google sign-in could not reach Google. Check your connection and try again.");
+      } else if (code === "auth/invalid-credential") {
+        setError("Firebase could not verify the Google sign-in. Try again or sign in with email.");
+      } else {
+        setError(authErrorMessage(reason, "Google sign-in failed."));
+      }
     } finally {
       setBusy(false);
     }

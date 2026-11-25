@@ -42,15 +42,17 @@ function WorkspaceSession({ children }: { children: ReactNode }) {
     const refresh = () => { if (live) void client.invalidateQueries({ refetchType: "active" }); };
     window.addEventListener("online", refresh);
     window.addEventListener("dayloop:mobile-sync", refresh);
-    const stop = scheduleMobileSync();
+    let stop: (() => void) | undefined;
     void openMobileWorkspace().then((ready) => {
-      if (ready && live) void getSyncValue("bootstrap_status").then((status) => {
-        if (status !== "complete" && live) void preloadMobileWorkspace();
+      if (ready && live) return getSyncValue("bootstrap_status").then((status) => {
+        if (status !== "complete" && live) return preloadMobileWorkspace();
       });
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      if (live) stop = scheduleMobileSync();
+    });
     return () => {
       live = false;
-      stop();
+      stop?.();
       window.removeEventListener("online", refresh);
       window.removeEventListener("dayloop:mobile-sync", refresh);
     };

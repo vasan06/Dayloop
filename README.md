@@ -48,7 +48,7 @@ No SQLite, Redis, MongoDB or AWS service is required by the intended architectur
 frontend/                 React SPA, layouts, routes, feature pages, hooks and styling
 backend/                  FastAPI, migrations, models, services, tests and worker
 mobile/                   Capacitor config, Android build dependencies and mobile guidance
-.github/workflows/        Android debug APK CI
+.github/workflows/        Android internal APK CI
 docs/                     Additional engineering documents
 .env.example              Documented local configuration placeholders (no secrets)
 README.md                 Project and setup documentation
@@ -80,15 +80,15 @@ The Android app **reuses every React page and browser route** from `frontend/src
 1. Commit and push the `mobile/` directory, updated lockfile, and `.github/workflows/android-apk.yml`.
 2. In GitHub **Settings → Secrets and variables → Actions → Variables**, define `DAYLOOP_API_URL` as a reachable HTTPS URL ending in `/api/v1`. For example: `https://api.example.com/api/v1` (replace with your actual host).
 3. Define the existing Firebase web-client `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` and optional storage/messaging/measurement variables. Do not add service-account JSON, database passwords, or private keys to frontend build variables.
-4. Open **Actions → Android Debug APK → Run workflow** on the branch containing the changes.
-5. Download the `dayloop-android-debug-apk` artifact and install `app-debug.apk` on an Android device after checking Android's installer prompts.
+4. Open **Actions → Android Internal APK → Run workflow** on the branch containing the changes.
+5. Download `app-internal.apk` from the `dayloop-android-debug-apk` artifact. Confirm the installed app uses the same signing certificate before testing an in-place update.
 
-The workflow installs Node and Java, builds the existing Vite SPA, uses the maintained Capacitor Android project (or generates it if absent), synchronizes web assets, compiles with Gradle, and uploads the debug APK. The APK is **not a signed production/Play Store release**; release signing, versioning and a protected release workflow are separate steps.
+The workflow builds the Vite SPA, synchronizes it into the Capacitor project, and packages a non-debuggable internal APK with the existing APK signing certificate. CI verifies the package, version code, and signer before upload.
 
 ### Android limitations and prerequisites
 
 - **Backend/database:** Keep your current Python API and PostgreSQL; however, both must be available to the phone through a reachable API endpoint. `localhost` on Android means the Android device, not your PC. Backend CORS must allow the Android WebView origin as appropriate.
-- **Firebase:** Keep the existing Firebase project. Register the Android app with package ID `com.dayloop.app` for native Android Firebase capabilities. Firebase web email/password flows can be reused, but Google sign-in via browser popup/redirect requires a native sign-in path; WebView OAuth is not automatically supported. Register the app's signing certificate fingerprints when Google native sign-in is implemented.
+- **Firebase:** Enable Google as a sign-in provider and register the APK signing certificate fingerprints for `com.dayloop.app` in the existing Firebase project. Android obtains a Google ID token through the native account picker and exchanges it with the Firebase Web SDK. See the [mobile configuration guide](mobile/README.md#api-and-firebase).
 - **Native behavior:** Browser notifications, push, alarm scheduling when closed, attachment pickers, deep links, back navigation and offline data sync need device verification or Capacitor/native integrations. Do not promise their native behavior solely from a successful APK build.
 - **Configuration:** Android compiled assets must use `VITE_API_URL` pointing to HTTPS. App frontend build settings are publicly extractable from an APK; they must not contain secrets.
 - **Development:** See [mobile/README.md](mobile/README.md) for local Android commands and the native build lifecycle.
