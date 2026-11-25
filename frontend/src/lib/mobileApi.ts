@@ -1,6 +1,6 @@
 import {
   activateMobileAccount, cachedResponse, getSyncValue, isNativeMobile, listConflicts, pendingMutations,
-  removeMutation, saveConflict, saveResponse, setSyncValue, type PendingMutation,
+  removeMutation, removeResponse, saveConflict, saveResponse, setSyncValue, type PendingMutation,
 } from "./mobileData";
 import { firebaseAuth } from "./firebase";
 import { deriveOffline } from "./mobileDerived";
@@ -23,6 +23,28 @@ const resourcePaths = [
   "/finance/budgets", "/finance/savings", "/tasks", "/projects",
   "/habits", "/notes", "/goals", "/trackers", "/notifications",
 ];
+function assertCurrentAccount(uid: string): void {
+  if (initializedUid !== uid || firebaseAuth?.currentUser?.uid !== uid) {
+    throw new Error("The mobile workspace account changed.");
+  }
+}
+
+function forAccount<TArgs extends unknown[], TResult>(
+  uid: string, action: (...args: TArgs) => Promise<TResult>,
+): (...args: TArgs) => Promise<TResult> {
+  return async (...args) => {
+    assertCurrentAccount(uid);
+    const result = await action(...args);
+    assertCurrentAccount(uid);
+    return result;
+  };
+}
+
+function transportFailed(error: unknown): boolean {
+  return error instanceof Error && error.name === "ApiRequestError"
+    && "status" in error && error.status === 0;
+}
+
 const timestamp = () => new Date().toISOString();
 const obj = (v: unknown): v is JsonRecord => typeof v === "object" && v !== null && !Array.isArray(v);
 const data = (v: string | null | undefined): JsonRecord => {
@@ -44,20 +66,19 @@ function section(path: string): { list: string; id: string | null; rest: string 
   return null;
 }
 
-async function listItems(path: string): Promise<JsonRecord[]> {
-  const value = await cachedResponse<{ items?: JsonRecord[] }>(path);
-  return Array.isArray(value?.items) ? value.items : [];
-}
-async function getObject(path: string, id: string): Promise<JsonRecord | null> {
-  return (await listItems(path)).find((item) => item.id === id) ?? null;
-}
-async function patchCache(path: string, method: string, payload: JsonRecord, serverItem?: JsonRecord): Promise<unknown> {
+async function patchCache(uid: string, path: string, method: string, payload: JsonRecord, serverItem?: JsonRecord): Promise<unknown> {
+  const save = forAccount(uid, saveResponse);
+  const read = <T>(path: string) => forAccount(uid, cachedResponse<T>)(path);
+  const listItems = async (path: string): Promise<JsonRecord[]> => {
+    const value = await read<{ items?: JsonRecord[] }>(path);
+    return Array.isArray(value?.items) ? value.items : [];
+  };
   const parsed = section(path);
   if (!parsed) {
     if (method === "PUT" || method === "PATCH") {
-      const current = await cachedResponse<{ item?: JsonRecord }>(path);
+      const current = await read<{ item?: JsonRecord }>(path);
       const response = { item: { ...current?.item, ...payload } };
-      await saveResponse(path, response);
+      await save(path, response);
       return response;
     }
     return { item: payload };
@@ -66,34 +87,34 @@ async function patchCache(path: string, method: string, payload: JsonRecord, ser
   if (rest) {
     // Nested resources require a local source of truth, not an untracked remote call.
     if (rest === "blocks" && method === "PUT") {
-      const page = await getObject(list, id!);
+      const page = (await listItems(list)).find((item) => item.id === id);
       const saved = { item: { ...page, title: payload.title ?? page?.title ?? "Untitled", updated_at: timestamp() }, blocks: payload.blocks ?? [] };
-      await saveResponse(list + "/" + id, saved);
+      await save(list + "/" + id, saved);
       const items = (await listItems(list)).map((item) => item.id === id ? { ...item, title: saved.item.title, updated_at: timestamp() } : item);
-      await saveResponse(list, { items });
+      await save(list, { items });
       return saved;
     }
     if (rest === "subtasks" && method === "POST") {
       const child = { id: crypto.randomUUID(), parent_task_id: id, status: "not_started", priority: "normal", ...payload, ...serverItem, created_at: timestamp(), updated_at: timestamp() };
-      await saveResponse(list, { items: [...await listItems(list), child] });
-      await saveResponse(path, { items: [...await listItems(path), child] });
+      await save(list, { items: [...await listItems(list), child] });
+      await save(path, { items: [...await listItems(path), child] });
       return { item: child };
     }
     if (rest === "increment" && method === "POST") {
       const items = await listItems(list);
       const current = items.find((item) => item.id === id);
       const changed = { ...current, current_value: Number(current?.current_value ?? 0) + 1 };
-      await saveResponse(list, { items: items.map((item) => item.id === id ? changed : item) });
+      await save(list, { items: items.map((item) => item.id === id ? changed : item) });
       return { item: changed };
     }
     if (rest === "notes" && method === "PUT") {
       const saved = { items: payload.blocks ?? [], updated_at: timestamp() };
-      await saveResponse(path, saved);
+      await save(path, saved);
       return saved;
     }
     if (rest === "dependencies" && method === "PUT") {
       const saved = { items: payload.depends_on ?? [] };
-      await saveResponse(path, saved);
+      await save(path, saved);
       return saved;
     }
     if (rest.startsWith("entries")) {
@@ -105,7 +126,7 @@ async function patchCache(path: string, method: string, payload: JsonRecord, ser
       const updated = method === "DELETE"
         ? entries.filter((item) => item[key] !== entryDate)
         : [...entries.filter((item) => item[key] !== row[key]), row];
-      await saveResponse(entriesPath, { items: updated });
+      await save(entriesPath, { items: updated });
       return { item: row };
     }
     return { item: serverItem ?? payload };
@@ -113,7 +134,11 @@ async function patchCache(path: string, method: string, payload: JsonRecord, ser
   if (list === "/notifications" && method === "POST") return { item: payload };
   const previous = await listItems(list);
   if (method === "DELETE") {
-    await saveResponse(list, { items: previous.filter((item) => item.id !== id) });
+    if (id) {
+      const remove = forAccount(uid, removeResponse);
+      for (const detail of detailPaths(list, id)) await remove(detail);
+    }
+    await save(list, { items: previous.filter((item) => item.id !== id) });
     return undefined;
   }
   if (id) {
@@ -129,13 +154,13 @@ async function patchCache(path: string, method: string, payload: JsonRecord, ser
       changes.completed_at = null;
     }
     const row = { ...original, ...changes, ...serverItem, id, updated_at: timestamp() };
-    await saveResponse(list, { items: previous.some((item) => item.id === id)
+    await save(list, { items: previous.some((item) => item.id === id)
       ? previous.map((item) => item.id === id ? row : item)
       : [...previous, row] });
     return { item: row };
   }
   const created = { id: crypto.randomUUID(), created_at: timestamp(), updated_at: timestamp(), ...payload, ...serverItem };
-  await saveResponse(list, { items: [...previous, created] });
+  await save(list, { items: [...previous, created] });
   return { item: created };
 }
 function endpointFor(path: string, method: string): boolean {
@@ -149,25 +174,32 @@ export async function openMobileWorkspace(): Promise<boolean> {
   const uid = firebaseAuth?.currentUser?.uid;
   if (!uid) return false;
   if (initializedUid !== uid) {
+    if (initializedUid) resetMobileWorkspace();
     await activateMobileAccount(uid);
+    if (firebaseAuth?.currentUser?.uid !== uid) throw new Error("The mobile workspace account changed.");
     initializedUid = uid;
-    lastSync = 0;
   }
   return true;
 }
 export function resetMobileWorkspace(): void {
   initializedUid = "";
   lastSync = 0;
+  transporting = null;
+  syncing = null;
 }
 export async function mobileRequest<T>(
-  path: string, init: RequestInit, send: RequestTransport,
+  path: string, init: RequestInit, transport: RequestTransport,
 ): Promise<T> {
-  if (!await openMobileWorkspace()) return send(path, init) as Promise<T>;
+  const uid = firebaseAuth?.currentUser?.uid;
+  if (!uid || !await openMobileWorkspace()) return transport(path, init) as Promise<T>;
+  assertCurrentAccount(uid);
+  const send = forAccount(uid, transport);
+  const save = forAccount(uid, saveResponse);
   transporting = send;
   const method = (init.method ?? "GET").toUpperCase();
   if (method === "GET") {
     let fetchFailure: unknown = null;
-    const pending = await pendingMutations();
+    const pending = await forAccount(uid, pendingMutations)();
     const affected = pending.some((item) => {
       const group = section(item.path);
       return path === item.path || (group && path === group.list) ||
@@ -176,21 +208,22 @@ export async function mobileRequest<T>(
     if (!affected) {
       try {
         const remote = await send(path, init) as T;
-        await saveResponse(path, remote);
+        await save(path, remote);
         window.dispatchEvent(new CustomEvent("dayloop:cache-state", { detail: { stale: false } }));
         if (pending.length && !syncing && Date.now() - lastSync > 60_000) void syncMobileChanges().catch(() => {});
         return remote;
       } catch (error) {
+        assertCurrentAccount(uid);
+        if (init.signal?.aborted || !transportFailed(error)) throw error;
         fetchFailure = error;
-        // Preserve the underlying HTTP/network error if this section was never cached.
       }
     }
-    const derived = await deriveOffline(path);
+    const derived = await forAccount(uid, deriveOffline)(path);
     if (derived !== null) {
       window.dispatchEvent(new CustomEvent("dayloop:cache-state", { detail: { stale: true } }));
       return derived as T;
     }
-    const cached = await cachedResponse<T>(path);
+    const cached = await forAccount(uid, cachedResponse<T>)(path);
     if (cached !== null) {
       window.dispatchEvent(new CustomEvent("dayloop:cache-state", { detail: { stale: true } }));
       return cached;
@@ -206,21 +239,16 @@ export async function mobileRequest<T>(
   }
   const body = typeof init.body === "string" ? init.body : null;
   const input = data(body);
-  try {
-    const remote = await send(path, init) as { item?: JsonRecord } | undefined;
-    await patchCache(path, method, input, remote?.item);
-    return remote as T;
-  } catch (error) {
-    // Server-dependent changes must remain unsaved when the request fails.
-    // Existing queued edits from older builds are retained for explicit sync.
-    throw error;
-  }
+  const remote = await send(path, init) as { item?: JsonRecord } | undefined;
+  await patchCache(uid, path, method, input, remote?.item);
+  return remote as T;
 }
-async function rewriteTemporaryId(from: string, to: string): Promise<void> {
-  if (!from || from === to) return;
-  // Rewrite structured JSON cache and pending requests, never user text by guessing IDs.
+async function reconcileCreatedId(uid: string, operation: PendingMutation, serverId: string): Promise<boolean> {
+  const tempId = data(operation.base).__temp_id;
+  if (typeof tempId !== "string" || !tempId || !serverId || tempId === serverId) return false;
   const { replaceMobileTempId } = await import("./mobileIds");
-  await replaceMobileTempId(from, to);
+  await forAccount(uid, replaceMobileTempId)(tempId, serverId, operation.op_id);
+  return true;
 }
 function changedAgainstBase(base: JsonRecord, remote: JsonRecord, intended: JsonRecord, method: string): boolean {
   if (method === "DELETE") return !same(base, remote);
@@ -257,41 +285,83 @@ const feedRoutes: Record<string,string> = {
   notification_jobs: "/notifications", notification_deliveries: "/notifications",
   streak_events: "/habits", task_notes: "/tasks", attachments: "/attachments",
 };
-async function pullServerChanges(send: RequestTransport): Promise<void> {
+function detailPaths(route: string, id: string): string[] {
+  if (route === "/notes") return [route + "/" + id];
+  if (route === "/tasks") return [route + "/" + id + "/notes", route + "/" + id + "/subtasks"];
+  if (route === "/habits" || route === "/trackers") return [route + "/" + id + "/entries"];
+  return [];
+}
+
+function cachedIds(value: unknown): string[] {
+  if (!obj(value) || !Array.isArray(value.items)) return [];
+  return value.items.map(recordId).filter(Boolean);
+}
+
+async function pullServerChanges(uid: string, send: RequestTransport): Promise<boolean> {
+  const save = forAccount(uid, saveResponse);
+  const read = forAccount(uid, cachedResponse);
+  const remove = forAccount(uid, removeResponse);
+  let changed = false;
   // Never discard unsynced or unresolved local edits with a server snapshot.
-  if ((await pendingMutations()).length || (await listConflicts()).length) return;
-  let cursor = Number(await getSyncValue("server_cursor") ?? "0");
+  if ((await forAccount(uid, pendingMutations)()).length || (await forAccount(uid, listConflicts)()).length) return false;
+  const getValue = forAccount(uid, getSyncValue);
+  const setValue = forAccount(uid, setSyncValue);
+  let cursor = Number(await getValue("server_cursor") ?? "0");
+  const savedTransactionCursor = await getValue("server_cursor_v2");
+  let [transaction, sequence] = /^\d+:\d+$/.test(savedTransactionCursor ?? "")
+    ? savedTransactionCursor!.split(":") : ["0", "0"];
   for (let page = 0; page < 100; page++) {
-    const response = await send("/sync/changes?after=" + cursor + "&limit=200") as {
-      items: Array<{entity:string;sequence:number}>;
-      next_cursor: number;
+    const query = new URLSearchParams({
+      after: String(cursor), limit: "200", after_tx: transaction, after_sequence: sequence,
+    });
+    const response = await send("/sync/changes?" + query) as {
+      items: Array<{entity:string}>;
+      next_cursor?: number;
+      next_transaction?: string;
+      next_sequence?: string;
       has_more: boolean;
     };
     const routes = new Set((response.items ?? []).map((event) => feedRoutes[event.entity]).filter(Boolean));
     for (const route of routes) {
+      const previous = new Set(cachedIds(await read(route)));
       const fresh = await send(route);
-      await saveResponse(route, fresh);
-      if (route === "/notes") {
-        for (const item of (fresh as {items?:JsonRecord[]}).items ?? []) {
-          const id = recordId(item);
-          if (id) await saveResponse(route + "/" + id, await send(route + "/" + id));
+      for (const id of cachedIds(fresh)) {
+        previous.delete(id);
+        for (const detail of detailPaths(route, id)) {
+          if (route === "/notes" || await read(detail) !== null) await save(detail, await send(detail));
         }
       }
+      for (const id of previous) {
+        for (const detail of detailPaths(route, id)) await remove(detail);
+      }
+      await save(route, fresh);
     }
-    cursor = response.next_cursor;
-    await setSyncValue("server_cursor", String(cursor));
+    if (response.next_transaction !== undefined && response.next_sequence !== undefined) {
+      transaction = response.next_transaction;
+      sequence = response.next_sequence;
+      await setValue("server_cursor_v2", transaction + ":" + sequence);
+    } else if (response.next_cursor !== undefined) {
+      cursor = response.next_cursor;
+      await setValue("server_cursor", String(cursor));
+    }
+    changed ||= routes.size > 0;
     if (!response.has_more) break;
   }
+  return changed;
 }
 export async function syncMobileChanges(): Promise<void> {
-  if (!await openMobileWorkspace() || !transporting || !navigator.onLine) return;
+  const uid = firebaseAuth?.currentUser?.uid;
+  if (!uid || !navigator.onLine || !await openMobileWorkspace() || !transporting) return;
+  assertCurrentAccount(uid);
   if (syncing) return syncing;
-  // Legacy edits still need reconciliation, but an idle app needs no sync traffic.
-  if (!(await pendingMutations()).length) return;
-  syncing = (async () => {
-    const send = transporting!;
-    for (const op of await pendingMutations()) {
-      const conflicts = await listConflicts();
+  const send = transporting;
+  const flight = (async () => {
+    let changed = false;
+    const readQueue = forAccount(uid, pendingMutations);
+    let queue = await readQueue();
+    while (queue.length) {
+      const op = queue.shift()!;
+      const conflicts = await forAccount(uid, listConflicts)();
       if (conflicts.some((item) => item.op_id === op.op_id)) break;
       try {
         const input = data(op.body);
@@ -299,37 +369,38 @@ export async function syncMobileChanges(): Promise<void> {
         if (base && !base.__temp_id && section(op.path)?.id) {
           const remote = await serverItemFor(op, send);
           if (remote === null && op.method === "DELETE") {
-            await removeMutation(op.op_id); // Already removed on the server.
+            await forAccount(uid, removeMutation)(op.op_id); // Already removed on the server.
+            changed = true;
             continue;
           }
           if (remote === null || changedAgainstBase(base, remote, input, op.method)) {
-            await saveConflict({ op_id: op.op_id, path: op.path, base: op.base, local: op.body, remote: remote ? JSON.stringify(remote) : null });
+            await forAccount(uid, saveConflict)({ op_id: op.op_id, path: op.path, base: op.base, local: op.body, remote: remote ? JSON.stringify(remote) : null });
             break;
           }
         }
         const result = await send(op.path, { method: op.method, ...(op.body ? { body: op.body } : {}) }) as { item?: JsonRecord } | undefined;
-        if (op.method === "POST" && result?.item?.id) {
-          const collection = section(op.path);
-          if (collection) {
-            const tempId = op.base ? data(op.base).__temp_id : null;
-            if (typeof tempId === "string") await rewriteTemporaryId(tempId, recordId(result.item));
-          }
+        if (op.method === "POST" && await reconcileCreatedId(uid, op, recordId(result?.item))) {
+          queue = await readQueue();
+        } else {
+          await forAccount(uid, removeMutation)(op.op_id);
         }
-        await removeMutation(op.op_id);
+        changed = true;
       } catch {
         // Preserve queue and retry on next foreground/reconnection.
         break;
       }
     }
-    try { await pullServerChanges(send); } catch { /* Retry remote pull when the API is available. */ }
+    try { changed = await pullServerChanges(uid, send) || changed; } catch { /* Retry remote pull when the API is available. */ }
+    assertCurrentAccount(uid);
     lastSync = Date.now();
-    window.dispatchEvent(new Event("dayloop:mobile-sync"));
+    if (changed) window.dispatchEvent(new Event("dayloop:mobile-sync"));
   })();
-  try { await syncing; } finally { syncing = null; }
+  syncing = flight;
+  try { await flight; } finally { if (syncing === flight) syncing = null; }
 }
 export function scheduleMobileSync(): () => void {
   if (!isNativeMobile) return () => {};
-  const run = () => { if (!syncing && Date.now() - lastSync > 5000) void syncMobileChanges(); };
+  const run = () => { if (!syncing && Date.now() - lastSync > 5000) void syncMobileChanges().catch(() => {}); };
   window.addEventListener("online", run);
   window.addEventListener("focus", run);
   document.addEventListener("visibilitychange", run);
@@ -341,36 +412,36 @@ export function scheduleMobileSync(): () => void {
   };
 }
 export async function preloadMobileWorkspace(): Promise<void> {
-  if (!await openMobileWorkspace() || !transporting) return;
+  const uid = firebaseAuth?.currentUser?.uid;
+  if (!uid || !await openMobileWorkspace() || !transporting) return;
+  assertCurrentAccount(uid);
+  const send = transporting;
+  const save = forAccount(uid, saveResponse);
+  const setValue = forAccount(uid, setSyncValue);
   // Bootstrap existing PostgreSQL records through authenticated FastAPI.
   // Never overwrite a section with queued offline changes.
   let downloaded = 0;
   const missing: string[] = [];
   for (const path of catalog) {
-    const pending = await pendingMutations();
+    const pending = await forAccount(uid, pendingMutations)();
     const locallyEdited = pending.some((op) =>
       op.path === path || op.path.startsWith(path + "/") || path.startsWith(op.path + "/"));
     if (locallyEdited) continue;
     try {
-      const result = await transporting(path);
-      await saveResponse(path, result);
+      const result = await send(path);
+      await save(path, result);
       downloaded++;
-      if (path === "/notes" || path === "/trackers" || path === "/habits" || path === "/tasks") {
-        const collection = result as { items?: JsonRecord[] };
-        for (const item of collection.items ?? []) {
-          const id = recordId(item);
-          if (!id) continue;
-          const detail = path === "/notes" ? path + "/" + id :
-            path === "/tasks" ? path + "/" + id + "/notes" : path + "/" + id + "/entries";
-          try { await saveResponse(detail, await transporting(detail)); }
+      for (const id of cachedIds(result)) {
+        for (const detail of detailPaths(path, id)) {
+          try { await save(detail, await send(detail)); }
           catch { missing.push(detail); }
         }
       }
     } catch { missing.push(path); }
   }
-  await setSyncValue("bootstrap_status", missing.length ? "incomplete" : "complete");
-  await setSyncValue("bootstrap_downloaded", String(downloaded));
-  await setSyncValue("bootstrap_missing", JSON.stringify(missing));
-  await setSyncValue("bootstrap_last_attempt", new Date().toISOString());
+  await setValue("bootstrap_status", missing.length ? "incomplete" : "complete");
+  await setValue("bootstrap_downloaded", String(downloaded));
+  await setValue("bootstrap_missing", JSON.stringify(missing));
+  await setValue("bootstrap_last_attempt", new Date().toISOString());
   window.dispatchEvent(new Event("dayloop:mobile-sync"));
 }

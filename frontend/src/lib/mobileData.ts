@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core";
-import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from "@capacitor-community/sqlite";
+import { CapacitorSQLite, SQLiteConnection, type capSQLiteSet, type SQLiteDBConnection } from "@capacitor-community/sqlite";
 
 export const isNativeMobile = Capacitor.isNativePlatform();
 export type PendingMutation = {
@@ -11,7 +11,7 @@ export type SyncConflict = {
 const sqlite = new SQLiteConnection(CapacitorSQLite);
 let connection: SQLiteDBConnection | null = null;
 let activeUid: string | null = null;
-let opening: Promise<void> | null = null;
+let connectionQueue: Promise<void> = Promise.resolve();
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS response_cache (
   path TEXT PRIMARY KEY, payload TEXT NOT NULL, fetched_at TEXT NOT NULL
@@ -34,18 +34,24 @@ function databaseName(uid: string): string {
   }
   return "dayloop_" + (first >>> 0).toString(16) + "_" + (second >>> 0).toString(16);
 }
+function changeConnection(update: () => Promise<void>): Promise<void> {
+  const operation = connectionQueue.then(update);
+  connectionQueue = operation.catch(() => {});
+  return operation;
+}
+
+async function closeActiveConnection(): Promise<void> {
+  if (connection && activeUid) await sqlite.closeConnection(databaseName(activeUid), false);
+  connection = null;
+  activeUid = null;
+}
+
 export async function activateMobileAccount(uid: string): Promise<void> {
   if (!isNativeMobile) return;
   if (!uid) throw new Error("Cannot open a mobile database without a signed-in user.");
-  if (activeUid === uid && connection) return;
-  if (opening) await opening;
-  if (activeUid === uid && connection) return;
-  opening = (async () => {
-    if (connection && activeUid) {
-      await sqlite.closeConnection(databaseName(activeUid), false);
-      connection = null;
-    }
-    activeUid = null;
+  await changeConnection(async () => {
+    if (activeUid === uid && connection) return;
+    await closeActiveConnection();
     const name = databaseName(uid);
     let db: SQLiteDBConnection;
     try {
@@ -68,14 +74,10 @@ export async function activateMobileAccount(uid: string): Promise<void> {
       await sqlite.closeConnection(name, false).catch(() => {});
       throw error;
     }
-  })();
-  try { await opening; } finally { opening = null; }
+  });
 }
 export async function deactivateMobileAccount(): Promise<void> {
-  if (opening) await opening;
-  if (connection && activeUid) await sqlite.closeConnection(databaseName(activeUid), false);
-  connection = null;
-  activeUid = null;
+  await changeConnection(closeActiveConnection);
 }
 export function activeMobileDatabase(): SQLiteDBConnection {
   return db();
@@ -84,16 +86,27 @@ function db(): SQLiteDBConnection {
   if (!connection || !activeUid) throw new Error("Mobile SQLite account is not initialized.");
   return connection;
 }
-export async function cachedResponse<T>(path: string): Promise<T | null> {
-  const result = await db().query("SELECT payload FROM response_cache WHERE path = ?", [path]);
+async function readResponse<T>(database: SQLiteDBConnection, path: string): Promise<T | null> {
+  const result = await database.query("SELECT payload FROM response_cache WHERE path = ?", [path]);
   const record = result.values?.[0] as { payload?: string } | undefined;
   return record?.payload ? JSON.parse(record.payload) as T : null;
 }
+export function cachedResponse<T>(path: string): Promise<T | null> {
+  return readResponse<T>(db(), path);
+}
+function responseWrite(path: string, payload: unknown): Required<capSQLiteSet> {
+  return {
+    statement: "INSERT INTO response_cache(path,payload,fetched_at) VALUES(?,?,?) " +
+      "ON CONFLICT(path) DO UPDATE SET payload=excluded.payload,fetched_at=excluded.fetched_at",
+    values: [path, JSON.stringify(payload), new Date().toISOString()],
+  };
+}
 export async function saveResponse(path: string, payload: unknown): Promise<void> {
-  await db().run(
-    "INSERT INTO response_cache(path,payload,fetched_at) VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET payload=excluded.payload,fetched_at=excluded.fetched_at",
-    [path, JSON.stringify(payload), new Date().toISOString()],
-  );
+  const { statement, values } = responseWrite(path, payload);
+  await db().run(statement, values);
+}
+export async function removeResponse(path: string): Promise<void> {
+  await db().run("DELETE FROM response_cache WHERE path=?", [path]);
 }
 export async function queueMutation(mutation: Omit<PendingMutation, "op_id" | "created_at">): Promise<string> {
   const id = crypto.randomUUID();
@@ -119,13 +132,18 @@ export async function saveConflict(conflict: SyncConflict): Promise<void> {
   );
   window.dispatchEvent(new Event("dayloop:mobile-data"));
 }
-export async function listConflicts(): Promise<SyncConflict[]> {
-  const result = await db().query("SELECT op_id,path,base,local,remote FROM sync_conflicts ORDER BY created_at");
+async function readConflicts(database: SQLiteDBConnection): Promise<SyncConflict[]> {
+  const result = await database.query("SELECT op_id,path,base,local,remote FROM sync_conflicts ORDER BY created_at");
   return (result.values ?? []) as SyncConflict[];
 }
+export function listConflicts(): Promise<SyncConflict[]> {
+  return readConflicts(db());
+}
 export async function resolveConflict(id: string, keep: "local" | "remote" | "merged", mergedJson?: string): Promise<void> {
-  const match = (await listConflicts()).find((item) => item.op_id === id);
+  const database = db();
+  const match = (await readConflicts(database)).find((item) => item.op_id === id);
   if (!match) throw new Error("Conflict not found");
+  const writes: capSQLiteSet[] = [];
   if (keep === "remote") {
     if (match.remote) {
       const latest = JSON.parse(match.remote) as unknown;
@@ -133,24 +151,26 @@ export async function resolveConflict(id: string, keep: "local" | "remote" | "me
         "/finance/budgets","/finance/savings","/tasks","/projects","/habits","/notes","/goals","/trackers"];
       const root = roots.find((item) => match.path.startsWith(item + "/"));
       if (root && latest && typeof latest === "object" && "id" in latest) {
-        const old = await cachedResponse<{items?: Array<{id:string}>}>(root);
+        const old = await readResponse<{items?: Array<{id:string}>}>(database, root);
         const updated = (old?.items ?? []).filter((item) => item.id !== (latest as {id:string}).id);
-        await saveResponse(root, {items: [...updated,latest]});
-      } else await saveResponse(match.path, latest);
+        writes.push(responseWrite(root, { items: [...updated, latest] }));
+      } else writes.push(responseWrite(match.path, latest));
     }
-    await removeMutation(match.op_id);
+    writes.push({ statement: "DELETE FROM pending_mutations WHERE op_id=?", values: [id] });
   } else {
     if (keep === "merged") {
       if (!mergedJson) throw new Error("Merged data is required");
       const parsed: unknown = JSON.parse(mergedJson);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Merged data must be an object");
-      await db().run("UPDATE pending_mutations SET base=NULL,body=? WHERE op_id=?", [mergedJson,id]);
+      writes.push({ statement: "UPDATE pending_mutations SET base=NULL,body=? WHERE op_id=?", values: [mergedJson, id] });
     } else {
-      await db().run("UPDATE pending_mutations SET base=NULL WHERE op_id=?", [id]);
+      writes.push({ statement: "UPDATE pending_mutations SET base=NULL WHERE op_id=?", values: [id] });
     }
   }
-  await db().run("DELETE FROM sync_conflicts WHERE op_id=?", [id]);
-  window.dispatchEvent(new Event("dayloop:mobile-data"));
+  writes.push({ statement: "DELETE FROM sync_conflicts WHERE op_id=?", values: [id] });
+  if (connection !== database) throw new Error("The mobile workspace account changed.");
+  await database.executeSet(writes);
+  if (connection === database) window.dispatchEvent(new Event("dayloop:mobile-data"));
 }
 export async function setSyncValue(key: string, value: string): Promise<void> {
   await db().run("INSERT OR REPLACE INTO sync_metadata(key,value) VALUES(?,?)", [key,value]);

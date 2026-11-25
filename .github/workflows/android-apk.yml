@@ -1,9 +1,9 @@
-name: Android Debug APK
+name: Android Internal APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, build-12]
     paths:
       - 'frontend/**'
       - 'mobile/**'
@@ -39,12 +39,12 @@ jobs:
           java-version: '21'
       - uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools'
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
       - name: Install web dependencies
         run: npm ci
       - name: Validate Android API address
         run: |
-          if [[ ! "$VITE_API_URL" =~ ^https://[^/]+/api/v1/?$ ]]; then
+          if [[ ! "$VITE_API_URL" =~ ^https://[[:alnum:].-]+(:[[:digit:]]+)?/api/v1/?$ ]]; then
             echo "::error::Set DAYLOOP_API_URL to the public HTTPS Render API URL ending in /api/v1."
             exit 1
           fi
@@ -86,12 +86,10 @@ jobs:
             echo "::error::Missing DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64 secret. Configure a stable Android debug signing keystore and register its SHA-1 with Firebase."
             exit 1
           fi
-          mkdir -p "$HOME/.android"
-          printf '%s' "$DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
-          # Android's default debug signing configuration uses this alias and password.
-          # Check the secret's actual certificate before producing an APK.
-          signing_sha1="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA1: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          signing_store="$(mktemp "$RUNNER_TEMP/dayloop-signing.XXXXXX")"
+          printf '%s' "$DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > "$signing_store"
+          chmod 600 "$signing_store"
+          signing_sha1="$(keytool -list -v -keystore "$signing_store" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA1: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           if [ -z "$signing_sha1" ]; then
             echo "::error::Could not read the Android debug signing certificate from DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64."
             exit 1
@@ -108,20 +106,32 @@ jobs:
             echo "::error::APK signer does not match DayLoop's registered Android SHA-1. Review the signing keystore secret before distributing this APK."
             exit 1
           fi
-          signing_sha256="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1)"
+          signing_sha256="$(keytool -list -v -keystore "$signing_store" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1)"
+          {
+            echo "DAYLOOP_ANDROID_SIGNING_STORE_FILE=$signing_store"
+            echo "ANDROID_SIGNING_SHA1=$signing_sha1"
+          } >> "$GITHUB_ENV"
           echo "::notice::APK signer SHA-1: $signing_sha1 (matches Firebase Android OAuth client)"
           echo "::notice::APK signer SHA-256: $signing_sha256 (register in Firebase Android app settings if missing)"
           echo "::notice::APK package: com.dayloop.app; Firebase project: dayloop-a5c00"
       - name: Sync web assets to Android
         working-directory: mobile
         run: npx cap sync android
-      - name: Compile debug APK
+      - name: Compile internal APK
         working-directory: mobile/android
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleInternal --no-daemon
+      - name: Verify APK identity, version, and signer
+        run: |
+          apk=mobile/android/app/build/outputs/apk/internal/app-internal.apk
+          test "$(apkanalyzer manifest application-id "$apk")" = com.dayloop.app
+          test "$(apkanalyzer manifest version-code "$apk")" = 12
+          test "$(apkanalyzer manifest debuggable "$apk")" = false
+          signer="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | awk -F': ' '/Signer #1 certificate SHA-1 digest:/ { print toupper($2) }')"
+          test "$signer" = "$ANDROID_SIGNING_SHA1"
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: dayloop-android-debug-apk
-          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          path: mobile/android/app/build/outputs/apk/internal/app-internal.apk
           if-no-files-found: error
           retention-days: 14
