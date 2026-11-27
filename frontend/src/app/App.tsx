@@ -20,14 +20,12 @@ const Analytics = lazy(() => import("../pages/Analytics"));
 const Profile = lazy(() => import("../pages/Profile"));
 const Trackers = lazy(() => import("../pages/Trackers"));
 const Settings = lazy(() => import("../pages/Settings"));
-const AppStates = lazy(() => import("../pages/AppStates"));
-const Responsive = lazy(() => import("../pages/Responsive"));
 const TaskDetail = lazy(() => import("../pages/TaskDetail"));
 const ProjectDetail = lazy(() => import("../pages/ProjectDetail"));
 const Transactions = lazy(() => import("../pages/Transactions"));
 const Budgets = lazy(() => import("../pages/Budgets"));
 const Admin = lazy(() => import("../pages/Admin"));
-const NotificationAction = lazy(() => import("../pages/NotificationAction"));
+
 
 function WorkspaceSession({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({
@@ -58,6 +56,15 @@ function WorkspaceSession({ children }: { children: ReactNode }) {
     };
   }, [client]);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
+function LegacyNotificationRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  const id = encodeURIComponent(params.get("sourceId") || "");
+  const type = params.get("type");
+  const path = type === "task" && id ? "/tasks/" + id : type === "habit" ? "/habits" + (id ? "?highlight=" + id : "") : type === "event" ? "/calendar" + (id ? "?highlight=" + id : "") : "/";
+  return <Navigate to={path} replace />;
 }
 
 export default function App() {
@@ -103,7 +110,7 @@ export default function App() {
       {(signOut, identity) => (
         <WorkspaceSession key={identity}>
         <Routes>
-          <Route path="notification-action" element={<Suspense fallback={<div className="boot">Opening action…</div>}><NotificationAction /></Suspense>} />
+          <Route path="notification-action" element={<LegacyNotificationRedirect />} />
           <Route element={<Shell onSignOut={signOut} identity={identity} />}>
             <Route index element={<Dashboard />} />
             <Route path="tasks" element={<Tasks />} />
@@ -120,8 +127,6 @@ export default function App() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="profile" element={<Profile />} />
             <Route path="settings" element={<Settings />} />
-            {import.meta.env.DEV && <Route path="states" element={<AppStates />} />}
-            {import.meta.env.DEV && <Route path="responsive" element={<Responsive />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

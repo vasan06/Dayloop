@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { LayoutTemplate, Palette, Play, Type } from "lucide-react";
 import { Card, CardHead, PageHead } from "../components/ui";
 import OfflineRecovery from "../components/OfflineRecovery";
-import { alertPermission, notificationSound, requestAlertPermission, setNotificationSound, showAlert, type NotificationSound } from "../lib/notifications";
+import { alertPermission, deadlinePreferences, setDeadlinePreferences, notificationSound, requestAlertPermission, setNotificationSound, showAlert, type NotificationSound } from "../lib/notifications";
 import { toast } from "../lib/toast";
 import { setTheme, useTheme } from "../hooks/useTheme";
 
@@ -28,6 +28,7 @@ export default function Settings(){
   const [density,setDensity]=useState<Density>(()=>stored("dayloop:density","comfortable"));
   const [motion,setMotion]=useState<Motion>(()=>stored("dayloop:motion","full"));
   const [previewKey,setPreviewKey]=useState(0);
+  const [deadlines,setDeadlines]=useState(deadlinePreferences);
   const [sound,setSound]=useState<NotificationSound>(notificationSound);
   const [notificationTesting,setNotificationTesting]=useState(false);
   async function testNotification() {
@@ -72,6 +73,10 @@ export default function Settings(){
           <button className="btn sm" type="button" onClick={() => void testNotification()} disabled={notificationTesting} style={{ marginTop: 12 }}>
             {notificationTesting ? "Testing…" : "Send test notification"}
           </button>
+        </div>
+        <div className="settings-section">
+          <div className="settings-label"><span><b>Task deadline reminders</b><small>Configure reminders on this device. The due-time alert remains enabled.</small></span></div>
+          {(["before","after"] as const).map(kind => <label key={kind} className="deadline-setting"><span>{kind === "before" ? "Before deadline" : "After deadline"}</span><select value={deadlines[kind]} onChange={event => {const next={...deadlines,[kind]:Number(event.target.value)};try{setDeadlinePreferences(next);setDeadlines(next);}catch{toast("Could not save reminder settings.","error");}}}>{[0,5,15,30,60,120,1440].map(minutes=><option key={minutes} value={minutes}>{minutes===0?"Off":minutes===1440?"1 day":minutes>=60?`${minutes/60} hour${minutes===60?"":"s"}`:`${minutes} minutes`}</option>)}</select></label>)}
         </div>
         <div className="settings-section">
           <div className="settings-label"><LayoutTemplate className="ic"/><span><b>Density</b><small>See the difference before choosing it.</small></span></div>

@@ -102,23 +102,15 @@ export async function registerNotificationActions(onOpen: (path: string) => void
   ] });
   const obsolete = (await LocalNotifications.getPending()).notifications.filter(item => item.extra?.focus === true);
   if (obsolete.length) await LocalNotifications.cancel({ notifications: obsolete.map(({ id }) => ({ id })) });
-  const listener = await LocalNotifications.addListener("localNotificationActionPerformed", ({ actionId, notification }) => {
+  const listener = await LocalNotifications.addListener("localNotificationActionPerformed", ({ notification }) => {
     const extra = notification.extra ?? {};
     if (extra.focus === true) return;
-    if (actionId === "tap") {
-      const id = typeof extra.sourceId === "string" ? encodeURIComponent(extra.sourceId) : "";
-      if (extra.sourceType === "task" && id) { onOpen("/tasks/" + id); return; }
-      if (extra.sourceType === "project" && id) { onOpen("/projects/" + id); return; }
-      if (extra.sourceType === "habit" && id) { onOpen("/habits?highlight=" + id); return; }
-      if (extra.sourceType === "event" && id) { onOpen("/calendar?highlight=" + id); return; }
-    }
-    const values = new URLSearchParams();
-    if (typeof extra.notificationId === "string") values.set("id", extra.notificationId);
-    if (typeof extra.sourceType === "string") values.set("type", extra.sourceType);
-    if (typeof extra.sourceId === "string") values.set("sourceId", extra.sourceId);
-    if (actionId !== "tap") values.set("action", actionId);
-    if (values.has("id") || values.has("sourceId")) onOpen(`/notification-action?${values}`);
-    else if (typeof extra.clickPath === "string") onOpen(extra.clickPath);
+    const id = typeof extra.sourceId === "string" ? encodeURIComponent(extra.sourceId) : "";
+    if (extra.sourceType === "task" && id) { onOpen("/tasks/" + id); return; }
+    if (extra.sourceType === "project" && id) { onOpen("/projects/" + id); return; }
+    if (extra.sourceType === "habit") { onOpen("/habits" + (id ? "?highlight=" + id : "")); return; }
+    if (extra.sourceType === "event") { onOpen("/calendar" + (id ? "?highlight=" + id : "")); return; }
+    if (typeof extra.clickPath === "string" && extra.clickPath.startsWith("/") && !extra.clickPath.startsWith("//")) onOpen(extra.clickPath);
   });
   return () => { void listener.remove(); };
 }
@@ -155,4 +147,27 @@ export async function scheduleHabitSnooze(habitId: string, at: number): Promise<
     extra: { dayloop: true, sourceType: "habit", sourceId: habitId },
     schedule: { at: new Date(at), allowWhileIdle: true }, isExactNotification: false,
   }] });
+}
+
+export type DeadlinePreferences = { before: number; after: number };
+export function deadlinePreferences(): DeadlinePreferences {
+  try {
+    const raw = JSON.parse(localStorage.getItem("dayloop:deadline-preferences") || "{}");
+    const allowed = [0, 5, 15, 30, 60, 120, 1440];
+    return { before: allowed.includes(raw.before) ? raw.before : 60, after: allowed.includes(raw.after) ? raw.after : 30 };
+  } catch { return { before: 60, after: 30 }; }
+}
+export function setDeadlinePreferences(value: DeadlinePreferences) {
+  localStorage.setItem("dayloop:deadline-preferences", JSON.stringify(value));
+  window.dispatchEvent(new Event("dayloop:deadline-preferences"));
+}
+export function taskDeadlineAlerts(task: {id:string;title:string;due_at?:string|null}, prefs:DeadlinePreferences): UpcomingAlert[] {
+  const due = Date.parse(task.due_at || "");
+  if (!Number.isFinite(due)) return [];
+  const base = { body: task.title, sourceType: "task" as const, sourceId: task.id };
+  return [
+    ...(prefs.before ? [{ ...base, key: `task:${task.id}:${due}:before`, title: "Task deadline approaching", when: due - prefs.before * 60000 }] : []),
+    { ...base, key: `task:${task.id}:${due}:due`, title: "Task due now", when: due },
+    ...(prefs.after ? [{ ...base, key: `task:${task.id}:${due}:after`, title: "Task overdue", when: due + prefs.after * 60000 }] : []),
+  ];
 }

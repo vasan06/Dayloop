@@ -18,7 +18,7 @@ export default function ReleaseInfo({ about = false, compact = false, iconOnly =
         <section className="release-hero">
           <div className="release-brand"><ReleaseMark size={32} /><span>DAYLOOP / RELEASE NOTES</span></div>
           <div className="release-version-line"><strong>v{release.version}</strong><Sparkles size={24} aria-hidden="true"/></div>
-          <div className="release-meta"><span>Build {release.build}</span><span>Update test build</span><span>{release.releases.find(item=>item.version===release.version)?.status ?? "Current build"}</span></div>
+          <div className="release-meta"><span>Build {release.build}</span><span>{release.releases.find(item=>item.version===release.version)?.status ?? "Current build"}</span></div>
         </section>
         <div className="release-history-label"><History size={16}/><h3>Release history</h3></div>
         <div className="release-timeline">
