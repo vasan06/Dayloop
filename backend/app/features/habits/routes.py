@@ -240,7 +240,7 @@ def streak_overview(user: dict = Depends(get_current_user)) -> dict:
             "break_date": result["last_break"],
         })
         logged = {entry["entry_date"]: entry for entry in history}
-        for event in result["events"][-100:]:
+        for event in result["events"]:
             entry = logged.get(event["event_date"], {})
             events.append({**event, "habit_id": habit["id"], "reason": entry.get("note", ""),
                            "created_at": entry.get("updated_at")})
@@ -261,7 +261,7 @@ def streak_overview(user: dict = Depends(get_current_user)) -> dict:
         "timezone": timezone, "today": today,
         "combined": {"current": combined, "last_update": today},
         "habits": individual,
-        "events": sorted(events, key=lambda e: e["event_date"], reverse=True)[:100],
+        "events": sorted(events, key=lambda e: e["event_date"], reverse=True),
         "longest": max(longest, combined),
     }
 
@@ -288,6 +288,8 @@ def save_entry(
     habit = fetch_one("SELECT * FROM habits WHERE id=%s AND user_id=%s AND archived_at IS NULL", (habit_id, user["id"]))
     if not habit:
         raise HTTPException(status_code=404, detail="Habit not found.")
+    if entry_date > local_today(habit.get("timezone") or "Asia/Kolkata"):
+        raise HTTPException(status_code=422, detail="Habit entries cannot be dated in the future.")
     status = payload["status"]
     note = payload.get("note", "")
     if not isinstance(note, str):

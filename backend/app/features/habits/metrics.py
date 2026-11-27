@@ -45,6 +45,7 @@ def calculate_habit_metrics(habit: dict, entries: list[dict], today: date | None
     return {
         "current_streak": len(current),
         "completed_today": by_date.get(today) == "completed",
+        "today_status": by_date.get(today),
         "current_streak_start": current[0] if current else None,
         "current_streak_end": current[-1] if current else None,
         "previous_streak_start": previous[0] if previous else None,

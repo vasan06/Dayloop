@@ -190,7 +190,7 @@ export default function ProjectDetail() {
           borderRadius: 28,
           border: "1px solid rgba(255,255,255,0.1)",
           marginBottom: 20,
-          background: bannerBackground(project.banner_key),
+          background: project.banner_key?.startsWith("studio-") ? `linear-gradient(90deg,rgba(12,20,28,.92),rgba(12,20,28,.62)), ${bannerBackground(project.banner_key)}` : bannerBackground(project.banner_key),
         }}
       >
         <div style={{ zIndex: 1 }}>

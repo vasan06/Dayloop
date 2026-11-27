@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { ChartDetail, ChartLegend, changeText, chartPosition, useChartSelection } from "./InteractiveCharts";
-import { money, shortDate } from "../lib/format";
+import { addDays, isoDate, money, shortDate } from "../lib/format";
 export { AxisBars as Bars, AxisLineChart as LineChart, Spark } from "./InteractiveCharts";
 export type { Series } from "./InteractiveCharts";
 
@@ -15,56 +15,63 @@ const habitSeries = [
 ] as const;
 
 export function HabitProgressChart({ points, height = 310 }: { points: HabitActivityChartPoint[]; height?: number }) {
-  const labels = points.map(p => shortDate(p.day));
+  const actual = points.slice(-4);
+  const today = actual[actual.length - 1]?.day ?? isoDate();
+  const days = Array.from({length: 7}, (_, i) => isoDate(addDays(new Date(today + "T12:00:00"), i - 3)));
+  const labels = days.map(d => d === today ? "Today" : shortDate(d));
+  points = actual;
   const state = useChartSelection(labels, habitSeries.map(s => s.name));
   const W = 900, L = 36, R = 45, T = 16, B = 28;
   const plotHeight = height - T - B;
   const maxCount = Math.max(1, ...points.map(p => Math.max(p.scheduled, p.active, p.completed + p.skipped)));
   const countStep = Math.max(1, Math.ceil(maxCount / 4));
-  const slot = (W - L - R) / Math.max(1, points.length);
+  const slot = (W - L - R) / 7;
   const x = (i: number) => L + (i + 0.5) * slot;
+  const dataX = (i: number) => x(days.indexOf(points[i].day));
   const countY = (n: number) => height - B - n / (countStep * 4) * plotHeight;
   const rateY = (n: number) => height - B - n / 100 * plotHeight;
   const alpha = (name: string) => !state.active || state.active === name ? 1 : 0.16;
-  const every = Math.max(1, Math.ceil(points.length / 8));
+
   const totalCompleted = points.reduce((sum, p) => sum + p.completed, 0);
   const totalScheduled = points.reduce((sum, p) => sum + p.scheduled, 0);
   const latest = points[points.length - 1];
   const best = points.reduce<HabitActivityChartPoint | undefined>((prev, p) => !prev || p.completion_rate > prev.completion_rate ? p : prev, undefined);
   const index = state.selected;
-  const selected = index === null ? null : points[index];
+  const selected = index === null ? null : points.find(p => p.day === days[index]);
 
   function pick(event: MouseEvent<SVGSVGElement>) {
     const pos = chartPosition(event);
     if (!pos || !points.length) return;
-    const i = Math.max(0, Math.min(points.length - 1, Math.floor((pos.x - L) / slot)));
+    const i = Math.max(0, Math.min(6, Math.floor((pos.x - L) / slot)));
     const target = event.target as SVGElement;
     const name = target.closest("[data-series]")?.getAttribute("data-series");
     state.select(i, name || state.active || undefined);
   }
   return <div className="habit-analytics">
-    <div className="habit-chart-topline"><span className="habit-chart-eyebrow">Last {points.length} days</span></div>
+    <div className="habit-chart-topline"><span className="habit-chart-eyebrow">7 days · Today centered</span></div>
     <ChartLegend items={[...habitSeries]} active={state.active} onToggle={state.toggle} />
     <svg className="chart habit-progress-chart" viewBox={`0 0 ${W} ${height}`} role="slider" tabIndex={0}
-      aria-label="Daily habit activity. Use arrow keys to explore." aria-valuemin={1} aria-valuemax={Math.max(1, points.length)}
+      aria-label="Daily habit activity. Use arrow keys to explore." aria-valuemin={1} aria-valuemax={7}
       aria-valuenow={(index ?? 0) + 1} aria-valuetext={selected ? selected.day : "Select a day"} onClick={pick} onKeyDown={state.keyDown}>
       {[0, 1, 2, 3, 4].map(tick => { const py = countY(tick * countStep); return <g key={tick}>
         <line className="gl" x1={L} x2={W - R} y1={py} y2={py} />
         <text x={L - 8} y={py + 4} textAnchor="end">{tick * countStep}</text><text x={W - R + 6} y={py + 4}>{tick * 25}%</text>
       </g>; })}
+      <rect x={x(3)-slot/2} y={T} width={slot} height={plotHeight} fill="var(--acc)" opacity={0.05}/>
+      {days.map((day, i) => <text key={day} x={x(i)} y={height-7} textAnchor="middle" opacity={i > 3 ? .55 : 1}>{labels[i]}</text>)}
       {points.map((p, i) => {
         const bw = Math.min(18, slot * 0.64);
         return <g key={p.day}>
-          <rect data-series="Completed" x={x(i) - bw / 2} y={countY(p.completed)} width={bw} height={countY(0) - countY(p.completed)}
+          <rect data-series="Completed" x={dataX(i) - bw / 2} y={countY(p.completed)} width={bw} height={countY(0) - countY(p.completed)}
             rx={2} fill="var(--green)" opacity={alpha("Completed")} />
-          <rect data-series="Skipped" x={x(i) - bw / 2} y={countY(p.completed + p.skipped)} width={bw} height={countY(0) - countY(p.skipped)}
+          <rect data-series="Skipped" x={dataX(i) - bw / 2} y={countY(p.completed + p.skipped)} width={bw} height={countY(0) - countY(p.skipped)}
             rx={2} fill="var(--rose)" opacity={alpha("Skipped")} />
-          {i % every === 0 && <text x={x(i)} y={height - 7} textAnchor="middle">{labels[i]}</text>}
+
         </g>;
       })}
       {habitSeries.slice(2).map(s => {
         const y = s.field === "active" ? countY : rateY;
-        const d = points.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p[s.field])}`).join(" ");
+        const d = points.map((p, i) => `${i ? "L" : "M"}${dataX(i)},${y(p[s.field])}`).join(" ");
         return <g key={s.name} data-series={s.name} opacity={alpha(s.name)}>
           <path d={d} fill="none" stroke="transparent" strokeWidth={12} />
           <path d={d} fill="none" stroke={s.color} strokeWidth={2.8} strokeDasharray={s.field === "active" ? "5 5" : undefined} />
@@ -76,13 +83,14 @@ export function HabitProgressChart({ points, height = 310 }: { points: HabitActi
     {selected && index !== null && <ChartDetail title={labels[index]} clear={state.clear}>
       {habitSeries.filter(s => !state.active || state.active === s.name).map(s => {
         const rate = s.field === "completion_rate";
-        const prev = points[index - 1];
+        const prev = points.find(p => p.day === days[index - 1]);
         const delta = prev ? selected.completion_rate - prev.completion_rate : 0;
-        const change = rate && prev ? (delta ? `${delta > 0 ? "Up" : "Down"} ${Math.abs(delta)} percentage points from ${prev.completion_rate}% on ${labels[index - 1]}.` : `Unchanged since ${labels[index - 1]}.`) : changeText(points.map(p => p[s.field]), index, labels);
+        const change = rate && prev ? (delta ? `${delta > 0 ? "Up" : "Down"} ${Math.abs(delta)} percentage points from ${prev.completion_rate}% on ${labels[index - 1]}.` : `Unchanged since ${labels[index - 1]}.`) : changeText(points.map(p => p[s.field]), points.indexOf(selected), points.map(p => shortDate(p.day)));
         return <p key={s.field}><b>{s.name} · {selected[s.field]}{rate ? "%" : ""}</b><span>{change}</span></p>;
       })}
       <p>{selected.completed} completed out of {selected.scheduled} scheduled.</p>
     </ChartDetail>}
+    {index !== null && index > 3 && <ChartDetail title={labels[index]} clear={state.clear}><p>Upcoming day — no activity yet.</p></ChartDetail>}
     <div className="habit-chart-stats">
       <div><span>Completed check-ins</span><b>{totalCompleted}</b><small>Across the selected period</small></div>
       <div><span>Average completion</span><b>{totalScheduled ? Math.round(totalCompleted / totalScheduled * 100) : 0}%</b><small>Completed vs scheduled</small></div>

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
-import { scheduleFocusReminder, scheduleHabitSnooze } from "../lib/notifications";
+import { scheduleHabitSnooze } from "../lib/notifications";
 import type { Habit, Notification } from "../lib/types";
 
 type Target = { id: string; title: string; body?: string; due_at?: string; start_at?: string; end_at?: string };
@@ -26,7 +26,7 @@ export default function NotificationAction() {
   const requestedAction = params.get("action");
   const validActions: Action[] = ["complete", "skip", "snooze", "reschedule", "clear"];
   const [action, setAction] = useState<Action>(validActions.includes(requestedAction as Action)
-    ? requestedAction as Action : requestedType === "focus" ? "clear" : "complete");
+    ? requestedAction as Action : "complete");
   const [note, setNote] = useState("");
   const [value, setValue] = useState("");
   const [minutes, setMinutes] = useState(15);
@@ -35,7 +35,7 @@ export default function NotificationAction() {
   const [loading, setLoading] = useState(Boolean(id || sourceId));
   const [error, setError] = useState("");
   const goBack = () => Number(window.history.state?.idx ?? 0) > 0
-    ? navigate(-1) : navigate(kind === "task" ? "/tasks" : kind === "event" ? "/calendar" : kind === "habit" ? "/habits" : "/focus", { replace: true });
+    ? navigate(-1) : navigate(kind === "task" ? "/tasks" : kind === "event" ? "/calendar" : kind === "habit" ? "/habits" : "/", { replace: true });
 
   useEffect(() => {
     let active = true;
@@ -80,10 +80,8 @@ export default function NotificationAction() {
     try {
       const record = sourceId || item?.source_id;
       const currentNotificationId = id || item?.id;
-      const targetPage = kind === "task" ? "/tasks" : kind === "event" ? "/calendar" : kind === "habit" ? "/habits" : "/focus";
-      if (kind === "focus") {
-        if (action === "snooze") await scheduleFocusReminder("snooze", Date.now() + minutes * 60000, "Snoozed reminder", "Your DayLoop reminder is due now.");
-      } else if (action === "clear") {
+      const targetPage = kind === "task" ? "/tasks" : kind === "event" ? "/calendar" : kind === "habit" ? "/habits" : "/";
+      if (action === "clear") {
         if (currentNotificationId) await apiRequest(`/notifications/${currentNotificationId}/dismiss`, { method: "PATCH" });
       } else if (action === "reschedule" && record && (kind === "task" || kind === "event")) {
         const when = new Date(date);
@@ -137,21 +135,21 @@ export default function NotificationAction() {
     }
   }
 
-  const kindLabel = kind === "task" ? "Task" : kind === "event" ? "Calendar event" : kind === "habit" ? "Habit" : "Focus reminder";
+  const kindLabel = kind === "task" ? "Task" : kind === "event" ? "Calendar event" : kind === "habit" ? "Habit" : "Notification";
   return <main className="reminder-page">
     <section className="reminder-card">
     <button className="reminder-back" type="button" onClick={goBack}>← Back</button>
     <div className="reminder-eyebrow">{kindLabel} reminder</div>
-    <h1>{target?.title || habit?.name || item?.title || (kind === "focus" ? "Focus timer or alarm" : loading ? "Loading notification…" : "Notification")}</h1>
+    <h1>{target?.title || habit?.name || item?.title || (loading ? "Loading notification…" : "Notification")}</h1>
     {(target?.body || item?.body) && <p className="reminder-body">{target?.body || item?.body}</p>}
     {error && <p role="alert" className="err">{error}</p>}
     <form onSubmit={(event) => void submit(event)}>
       <fieldset className="reminder-choices"><legend>What would you like to do?</legend>
         {([
-          ...(kind !== "focus" ? [{ id: "complete", label: kind === "habit" ? "Record completed" : "Mark done" }] : []),
+          ...(kind === "task" || kind === "event" || kind === "habit" ? [{ id: "complete", label: kind === "habit" ? "Record completed" : "Mark done" }] : []),
           ...(kind === "habit" ? [{ id: "skip", label: "Skip habit" }] : []),
           ...(kind === "task" || kind === "event" ? [{ id: "reschedule", label: "Reschedule" }] : []),
-          ...(kind === "habit" || kind === "focus" ? [{ id: "snooze", label: "Remind me later" }] : []),
+          ...(kind === "habit" ? [{ id: "snooze", label: "Remind me later" }] : []),
           { id: "clear", label: "Clear alert" },
         ] as Array<{ id: Action; label: string }>).map((choice) => <label className={action === choice.id ? "reminder-choice selected" : "reminder-choice"} key={choice.id}><input type="radio" name="reminder-action" checked={action === choice.id} onChange={() => setAction(choice.id)} /><span>{choice.label}</span></label>)}
       </fieldset>

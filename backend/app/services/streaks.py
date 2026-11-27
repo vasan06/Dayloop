@@ -71,7 +71,7 @@ def streak_history(entries: list[dict], schedule_type: str, schedule_config: dic
                 if current:
                     previous, current = current, []
                 last_break = day
-                if status or (previous and previous[-1] == day - DAY):
+                if status or day < today:
                     event = status or "missed"
             if event:
                 events.append({"event_type": event, "event_date": day, "streak_length": len(current)})

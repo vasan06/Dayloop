@@ -6,6 +6,8 @@ import { alertPermission, notificationSound, requestAlertPermission, setNotifica
 import { toast } from "../lib/toast";
 import { setTheme, useTheme } from "../hooks/useTheme";
 
+import ReleaseInfo from "../components/ReleaseInfo";
+
 type Preset = "default" | "paper" | "calm" | "mono" | "ocean" | "sunset";
 type Density = "compact" | "comfortable" | "spacious";
 type Motion = "full" | "subtle" | "reduce";
@@ -51,6 +53,7 @@ export default function Settings(){
     <PageHead title="Settings" sub="Shape the workspace around how you like to work" />
     <div className="settings-layout">
       <OfflineRecovery />
+      <Card><CardHead title="About DayLoop" /><div className="settings-section"><ReleaseInfo about /></div></Card>
       <Card className="settings-main">
         <CardHead title="Appearance" />
         <div className="settings-section">

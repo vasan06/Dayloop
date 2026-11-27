@@ -1,11 +1,15 @@
+import { useSearchParams as useNotificationParams } from "react-router-dom";
+import { useEffect as useNotificationEffect } from "react";
 import { useState } from "react";
+import { useQueries } from "@tanstack/react-query";
+import { apiRequest } from "../lib/api";
 import { Flame, Plus, Trash2 } from "lucide-react";
 import { Card, CardHead, ConfirmModal, Empty, ErrorBox, FormModal, PageHead, Progress, Skeleton, confetti, type FieldDef } from "../components/ui";
 import { HabitProgressChart, Heatmap } from "../components/charts";
 import { useCheckHabit, useCreateHabit, useDeleteHabit, useHabitEntries, useHabitInsights, useHabits, useUpdateHabit } from "../hooks/data";
 import { useNewParam } from "../hooks/useNewParam";
 import { addDays, isoDate } from "../lib/format";
-import type { Habit } from "../lib/types";
+import type { Habit, HabitEntry } from "../lib/types";
 
 function HabitHistory({ id, name }: { id: string; name: string }) {
   const entries = useHabitEntries(id);
@@ -96,20 +100,78 @@ function habitInitial(habit: Habit): Record<string, string> {
 }
 
 export default function Habits() {
+  const [notificationParams] = useNotificationParams();
+  const highlightedHabit = notificationParams.get("highlight");
+  useNotificationEffect(() => {
+    if (!highlightedHabit) return;
+    const reveal = () => {
+      const element = document.getElementById("habit-" + highlightedHabit);
+      if (!element) return false;
+      element.scrollIntoView({ block: "center", behavior: "smooth" });
+      return true;
+    };
+    if (reveal()) return;
+    const observer = new MutationObserver(() => { if (reveal()) observer.disconnect(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [highlightedHabit]);
+
   const habits = useHabits();
-  const insights = useHabitInsights(42);
+  const insights = useHabitInsights(7);
   const create = useCreateHabit();
   const check = useCheckHabit();
   const remove = useDeleteHabit();
   const update = useUpdateHabit();
   const [isNew, closeNew, showNew] = useNewParam();
   const [deleting, setDeleting] = useState<Habit | null>(null);
+  const habitToday = (h: Habit) => {
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {timeZone:h.timezone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+      return ["year","month","day"].map(key=>parts.find(p=>p.type===key)?.value).join("-");
+    } catch { return isoDate(); }
+  };
   const [logging, setLogging] = useState<Habit | null>(null);
   const [skipping, setSkipping] = useState<Habit | null>(null);
-  const [skipNote, setSkipNote] = useState("");
+  const [declining, setDeclining] = useState<Habit | null>(null);
   const [editing, setEditing] = useState<Habit | null>(null);
   const [historyOpen, setHistoryOpen] = useState<Set<string>>(() => new Set());
-  const list = habits.data ?? [];
+  const records = habits.data ?? [];
+  // Older deployed APIs may omit today_status; use the actual daily entry in that case.
+  const entryQueries = useQueries({ queries: records.map(h => ({
+    queryKey: ["habit-entries", h.id],
+    queryFn: () => apiRequest<{ items: HabitEntry[] }>(`/habits/${h.id}/entries`).then(r => r.items),
+    enabled: h.today_status === undefined,
+  })) });
+  const resolved = records.map((h, i) => {
+    if (h.today_status !== undefined) return h;
+    let today = isoDate();
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", { timeZone: h.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+      today = ["year", "month", "day"].map(type => parts.find(p => p.type === type)?.value).join("-");
+    } catch { /* use local calendar date */ }
+    const entry = entryQueries[i].data?.find(e => e.entry_date.slice(0, 10) === today);
+    return { ...h, today_status: entry?.status ?? null, completed_today: entry ? entry.status === "completed" : h.completed_today };
+  });
+  const reminderOrder = (h: Habit) => {
+    const r = h.reminder_config ?? {};
+    if (!r.type || r.type === "none") return 2;
+    const now = new Date();
+    const weekday = (now.getDay() + 6) % 7;
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const today = r.type === "daily" || (r.type === "custom" && Array.isArray(r.weekdays) && r.weekdays.includes(weekday)) ||
+      ((r.type === "monthly_once" || r.type === "monthly_twice") && Array.isArray(r.days) && r.days.some(d => Math.min(Number(d), last) === now.getDate()));
+    return today ? 0 : 1;
+  };
+  const outcomeOrder = (h: Habit) => {
+    if (h.today_status === "failed" || h.today_status === "missed") return 2;
+    if (h.today_status === "skipped") return 1;
+    if (h.today_status === "completed" || h.completed_today) return 3;
+    return 0;
+  };
+  const list = [...resolved].sort((a, b) =>
+    outcomeOrder(a) - outcomeOrder(b) ||
+    reminderOrder(a) - reminderOrder(b) ||
+    String(a.reminder_config?.time ?? "99:99").localeCompare(String(b.reminder_config?.time ?? "99:99")));
   const done = list.filter((h) => h.completed_today).length;
 
   return (
@@ -117,17 +179,18 @@ export default function Habits() {
       <PageHead title="Habits" sub={list.length ? `${done} of ${list.length} done today` : "Small things, done daily"}><button className="btn pri" onClick={showNew}><Plus className="ic" />New habit</button></PageHead>
       {habits.isLoading ? <Card><Skeleton rows={4} /></Card> : habits.isError ? <ErrorBox error={habits.error} retry={() => void habits.refetch()} /> : list.length === 0 ? <Card><Empty title="No habits yet" hint="Pick one small habit and check in daily to build a streak." action={<button className="btn pri sm" onClick={showNew}>Create habit</button>} /></Card> : (
         <div className="pc habit-grid">{list.map((h, i) => (
-          <Card key={h.id} i={i} className="habit-card" tone={h.completed_today ? "mint" : undefined}>
+          <Card key={h.id} i={i} className={highlightedHabit === h.id ? "habit-card notification-highlight" : "habit-card"} data-habit-status={h.today_status ?? (h.completed_today ? "completed" : "pending")} tone={h.completed_today ? "mint" : h.today_status === "failed" || h.today_status === "missed" ? "blush" : undefined}><span id={"habit-" + h.id} aria-hidden="true" />
             <div className="row sb"><button type="button" className="habit-name" onClick={() => setEditing(h)} aria-label={`Edit ${h.name}`}><h3>{h.name}</h3></button><div className="row"><span className="pill md"><Flame className="ic" style={{ width: 12, height: 12 }} />{h.current_streak}d</span><button className="iconbtn" aria-label={`Archive ${h.name}`} onClick={() => setDeleting(h)}><Trash2 className="ic" style={{ width: 14, height: 14 }} /></button></div></div>
             <p className="mute sm" style={{ margin: "4px 0 12px" }}>{h.description || (h.schedule_type === "daily" ? "Every day" : "Scheduled days")}</p>
+            {h.today_status && <p className="habit-outcome" role="status">{h.today_status === "completed" ? "Completed today" : h.today_status === "skipped" ? "Skipped today" : h.today_status === "failed" ? "Target not reached" : "Declined today"}</p>}
             <Progress value={h.consistency_30d} label={h.name + " consistency"} detail={`${Math.round(h.consistency_30d * h.scheduled_days_30d / 100)} of ${h.scheduled_days_30d} eligible days completed in the last 30 days. Skipped days are excluded.`} />
             <div className="row sb sm mute" style={{ margin: "8px 0 12px" }}><span>30-day consistency</span><b className="num">{h.consistency_30d}%</b></div>
             <div className="row wrap">
-              <button className={`btn sm ${h.completed_today ? "" : "pri"}`} disabled={check.isPending} onClick={(e) => h.measurement_type === "boolean" && !h.daily_note_required ? check.mutate({ id: h.id, status: "completed" }, { onSuccess: () => confetti(e.currentTarget) }) : setLogging(h)}>Input</button>
-              <button className="btn sm ghost" disabled={check.isPending} onClick={() => check.mutate({ id: h.id, status: "missed", value: 0 })}>Decline</button>
-              <button className="btn sm ghost" disabled={check.isPending} onClick={() => { setSkipping(h); setSkipNote(""); }}>Skip</button>
+              <button className={`btn sm ${h.completed_today ? "" : "pri"}`} disabled={check.isPending} onClick={() => {check.reset();setLogging(h);}}>Input</button>
+              <button className="btn sm ghost" disabled={check.isPending} onClick={() => {check.reset();setDeclining(h);}}>Decline</button>
+              <button className="btn sm ghost" disabled={check.isPending} onClick={() => {check.reset();setSkipping(h);}}>Skip</button>
             </div>
-            <button type="button" className="btn sm habit-history-toggle" style={{ marginTop: 12 }} aria-expanded={historyOpen.has(h.id)} onClick={() => setHistoryOpen((current) => { const next = new Set(current); next.has(h.id) ? next.delete(h.id) : next.add(h.id); return next; })}>{historyOpen.has(h.id) ? "Hide progress" : "View progress"}</button>
+            <button type="button" className="habit-history-toggle" aria-expanded={historyOpen.has(h.id)} onClick={() => setHistoryOpen((current) => { const next = new Set(current); next.has(h.id) ? next.delete(h.id) : next.add(h.id); return next; })}>{historyOpen.has(h.id) ? "Hide progress" : "View progress"}</button>
             {historyOpen.has(h.id) && <div className="habit-history-panel"><HabitHistory id={h.id} name={h.name} /></div>}
           </Card>
         ))}</div>
@@ -141,10 +204,11 @@ export default function Habits() {
         initial={habitInitial(editing)}
         fields={habitFields()}
         onSubmit={(v) => update.mutate({ id: editing.id, ...habitPayload(v) }, { onSuccess: () => setEditing(null) })} />}
-      {logging && <FormModal title={`Log ${logging.name}`} busy={check.isPending} onClose={() => setLogging(null)} fields={[...(logging.measurement_type === "boolean" || logging.measurement_type === "text" ? [] : [{ name: "value", label: logging.unit ? `Amount (${logging.unit})` : "Amount", type: "number" as const, step: "0.01", min: 0, required: true }]), ...(logging.daily_note_required || logging.measurement_type === "text" ? [{ name: "note", label: "What did you do?", type: "textarea" as const, required: true }] : [])]} onSubmit={(v) => check.mutate({ id: logging.id, status: "completed", value: v.value ? Number(v.value) : null, note: v.note }, { onSuccess: () => { confetti(); setLogging(null); } })} />}
-      {skipping && <FormModal title={`Skip ${skipping.name}`} busy={check.isPending} onClose={() => setSkipping(null)}
-        fields={[{ name: "note", label: "Why are you skipping today?", type: "textarea", required: true }]}
-        onSubmit={(v) => check.mutate({ id: skipping.id, status: "skipped", note: v.note.trim() }, { onSuccess: () => setSkipping(null) })} />}
+      {logging && <FormModal title={`Log ${logging.name}`} busy={check.isPending} error={check.error} initial={{date:habitToday(logging)}} onClose={() => setLogging(null)} fields={[{name:"date",label:"Entry date",type:"date",required:true,max:habitToday(logging)},...(logging.measurement_type === "boolean" || logging.measurement_type === "text" ? [] : [{ name: "value", label: logging.unit ? `Amount (${logging.unit})` : "Amount", type: "number" as const, step: "0.01", min: 0, required: true }]), ...(logging.daily_note_required || logging.measurement_type === "text" ? [{ name: "note", label: "What did you do?", type: "textarea" as const, required: true }] : [])]} onSubmit={(v) => check.mutate({ id: logging.id, date:v.date, status: "completed", value: v.value ? Number(v.value) : null, note: v.note }, { onSuccess: () => { confetti(); setLogging(null); } })} />}
+      {skipping && <FormModal title={`Skip ${skipping.name}`} busy={check.isPending} error={check.error} initial={{date:habitToday(skipping)}} onClose={() => setSkipping(null)}
+        fields={[{name:"date",label:"Entry date",type:"date",required:true,max:habitToday(skipping)},{ name: "note", label: "Why are you skipping this day?", type: "textarea", required: true }]}
+        onSubmit={(v) => check.mutate({ id: skipping.id, date:v.date, status: "skipped", note: v.note.trim() }, { onSuccess: () => setSkipping(null) })} />}
+      {declining && <FormModal title={`Decline ${declining.name}`} busy={check.isPending} error={check.error} initial={{date:habitToday(declining)}} onClose={()=>setDeclining(null)} fields={[{name:"date",label:"Entry date",type:"date",required:true,max:habitToday(declining)}]} onSubmit={v=>check.mutate({id:declining.id,date:v.date,status:"missed",value:0},{onSuccess:()=>setDeclining(null)})} />}
       {deleting && <ConfirmModal title="Archive habit?" body={`“${deleting.name}” will be archived. Your history is kept.`} confirm="Archive" onConfirm={() => remove.mutate(deleting.id)} onClose={() => setDeleting(null)} />}
     </>
   );

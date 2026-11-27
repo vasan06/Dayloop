@@ -1,0 +1,5 @@
+.table-pagination { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding-top:14px; }
+.table-pagination-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.table-pagination-controls .btn { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+.table-pagination-controls .btn:disabled { opacity:.45; cursor:not-allowed; }
+@media(max-width:480px) { .table-pagination-controls { width:100%; justify-content:space-between; gap:4px; } }

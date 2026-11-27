@@ -3,25 +3,27 @@ import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3, Bell, CalendarDays, CheckSquare, ChevronsLeft, FolderKanban, Flame, LayoutDashboard, LogOut, Moon,
-  NotebookPen, Plus, Repeat, Search, Sun, Wallet, ArrowUpRight, Command, UserCircle, PanelsTopLeft, Activity, Settings, TimerReset, CheckCheck, MessageSquare,
+  NotebookPen, Plus, Repeat, Search, Sun, Wallet, ArrowUpRight, Command, UserCircle, PanelsTopLeft, Activity, Settings, CheckCheck, MessageSquare,
 } from "lucide-react";
 import { useDismissNotification, useMarkAllNotificationsRead, useNotificationCenter, useProfile, useSearch, useStreakOverview } from "../hooks/data";
 import { toast } from "../lib/toast";
-import { initials, isoDate } from "../lib/format";
+import { initials } from "../lib/format";
 import { setTheme, useTheme } from "../hooks/useTheme";
 import { Modal, Toaster } from "./ui";
 import { AxisBars } from "./InteractiveCharts";
+import StreakTimeline from "./StreakTimeline";
 import { apiRequest } from "../lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { isNativeMobile } from "../lib/mobileData";
 import { alertPermission, nativeAlerts, requestAlertPermission, scheduleUpcomingAlerts, showAlert, type AlertPermission } from "../lib/notifications";
+
+import ReleaseInfo from "./ReleaseInfo";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/tasks", label: "Tasks", icon: CheckSquare },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/habits", label: "Habits", icon: Repeat },
-  { to: "/focus", label: "Focus", icon: TimerReset },
   { to: "/trackers", label: "Trackers", icon: Activity },
   { to: "/finance", label: "Finance", icon: Wallet },
   { to: "/notes", label: "Notes", icon: NotebookPen },
@@ -73,6 +75,16 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   const [collapsed, setCollapsed] = useState(() => safeGet("dl-rail") === "1");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [tourBrowse, setTourBrowse] = useState(false);
+  useEffect(() => {
+    const handleTourBrowse = (event: Event) => {
+      const open = (event as CustomEvent<boolean>).detail === true;
+      setTourBrowse(open);
+      if (open) setBrowseOpen(false);
+    };
+    window.addEventListener("dayloop:tour-browse", handleTourBrowse);
+    return () => window.removeEventListener("dayloop:tour-browse", handleTourBrowse);
+  }, []);
   const theme = useTheme();
   const [entered, setEntered] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -158,53 +170,6 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
     return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, []);
 
-  useEffect(() => {
-    const notifyFocus = async (title: string, body: string) => {
-      // Native focus timers/alarms are scheduled by the Focus screen.
-      // Do not emit another OS notification when the WebView timer ticks.
-      if (nativeAlerts) { toast(`${title}: ${body}`); return; }
-      if (await alertPermission() === "granted") {
-        try { await showAlert(title, body, "dayloop-focus:" + Date.now()); return; }
-        catch { /* fall through to in-app toast */ }
-      }
-      toast(`${title}: ${body}`);
-    };
-    const tick = () => {
-      // Focus owns its timers while that screen is mounted. Running both
-      // intervals can record the same session twice and show duplicate alerts.
-      if (window.location.pathname === "/focus") return;
-      const now = Date.now();
-      const focusEnd = Number(safeGet("dayloop:focus:end") || 0);
-      if (focusEnd && now >= focusEnd) {
-        const mins = Number(safeGet("dayloop:focus:minutes") || 25);
-        safeSet("dayloop:focus:end", "");
-        try { localStorage.removeItem("dayloop:focus:end"); } catch {}
-        const totalKey = `dayloop:focus:total:${isoDate()}`;
-        const total = Number(safeGet(totalKey) || 0);
-        safeSet(totalKey, String(total + mins * 60));
-        void notifyFocus("Focus complete", `${mins} focused minutes finished.`);
-      }
-      const snooze = Number(safeGet("dayloop:focus:snooze") || 0);
-      if (snooze && now >= snooze) {
-        try { localStorage.removeItem("dayloop:focus:snooze"); } catch {}
-        void notifyFocus("Snoozed reminder", "Your DayLoop reminder is due now.");
-      }
-      if (safeGet("dayloop:focus:alarm-armed") === "1") {
-        const alarmTime = safeGet("dayloop:focus:alarm-time") || "";
-        const current = new Date();
-        const hhmm = `${String(current.getHours()).padStart(2, "0")}:${String(current.getMinutes()).padStart(2, "0")}`;
-        const firedKey = `dayloop:focus:alarm-fired:${isoDate(current)}:${alarmTime}`;
-        if (alarmTime && hhmm === alarmTime && safeGet(firedKey) !== "1") {
-          safeSet(firedKey, "1");
-          try { localStorage.removeItem("dayloop:focus:alarm-armed"); } catch {}
-          void notifyFocus("DayLoop alarm", `Alarm for ${alarmTime}`);
-        }
-      }
-    };
-    tick();
-    const timer = window.setInterval(tick, 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     const storageKey = `dayloop:notified:${identity}`;
@@ -344,10 +309,18 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   const nextTheme = dark ? "light" : "dark";
 
 
+  const browseItems = (<nav className="browse-list" aria-label="Workspace sections">
+    {[...NAV.filter(item => !mobileShortcuts.has(item.to)), {to: "streaks", label: "Streak history", icon: Flame}]
+      .sort((a,b) => a.label.localeCompare(b.label)).map(({to, icon: Icon, label}) =>
+        to === "streaks" ? <button className="browse-row" key={to} type="button" data-tour="streaks" onClick={() => {setBrowseOpen(false);setStreakOpen(true);}}><Icon className="ic"/><span>{label}</span></button>
+        : <NavLink className="browse-row" data-tour={label.toLowerCase()} key={to} to={to} onClick={() => setBrowseOpen(false)}><Icon className="ic"/><span>{label}</span></NavLink>)}
+  </nav>);
+
   return (
     <div className="app">
       <a className="skip" href="#main">Skip to content</a>
-      <nav className={`rail ${collapsed ? "c" : ""}`} aria-label="Primary">
+      <nav className={`rail ${collapsed ? "c" : ""} ${browseOpen || tourBrowse ? "dock-browse-open" : ""}`} aria-label="Primary">
+        <div className="mobile-dock-track" aria-hidden="true"><span style={{ left: `${(browseOpen || tourBrowse ? 4 : Math.max(0, ["/", "/tasks", "/habits", "/calendar"].includes("/" + location.pathname.split("/")[1]) ? ["/", "/tasks", "/habits", "/calendar"].indexOf("/" + location.pathname.split("/")[1]) : 4)) * 20 + 10}%` }} /></div>
         <div className="rl">
           <Logo />
           <button className="railbtn" data-tour="sidebar" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setCollapsed((c) => !c)}><ChevronsLeft className="ic" /></button>
@@ -359,7 +332,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
 
           </NavLink>
         ))}
-        <button type="button" className={`nav browse-trigger ${mobileShortcuts.has("/" + location.pathname.split("/")[1]) ? "" : "on"}`} aria-haspopup="dialog" aria-expanded={browseOpen} onClick={() => setBrowseOpen(true)}>
+        <button type="button" data-tour="browse" className={`nav browse-trigger ${mobileShortcuts.has("/" + location.pathname.split("/")[1]) ? "" : "on"}`} aria-haspopup="dialog" aria-expanded={browseOpen} onClick={() => setBrowseOpen(true)}>
           <PanelsTopLeft className="ic" /><span className="lab">Browse</span>
         </button>
         <div className="sp" />
@@ -405,6 +378,8 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
         {staleCache && <div role="status" className="sm" style={{ padding: 8, textAlign: "center", background: "var(--butter)", color: "var(--ink)" }}>Showing saved data. Connect and pull down to refresh.</div>}
         {isNativeMobile && (pullDistance > 0 || refreshing) && <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 8 }}>{refreshing ? "Refreshing…" : pullDistance >= 72 ? "Release to refresh" : "Pull to refresh"}</div>}
         <div className="bar">
+          <div className="mobile-header-brand"><ReleaseInfo logo /></div>
+          <div className="workspace-release desktop-release"><ReleaseInfo compact /></div>
           <div className="sp2" />
           <button className="kbar" onClick={() => setPaletteOpen(true)} aria-label="Open command palette"><Search className="ic" /><span>Search or jump to…</span><span className="kbd" style={{ flex: "none" }}>⌘K</span></button>
           <button className="iconbtn" data-tour="feedback" aria-label="Send feedback" onClick={() => setFeedbackOpen(true)}><MessageSquare className="ic" /></button>
@@ -446,23 +421,21 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
           <div className="row sb"><span className="mono">{location.pathname}</span><button className="btn pri" disabled={feedbackBusy || feedbackText.trim().length < 3}><MessageSquare className="ic" />{feedbackBusy ? "Sending…" : "Send feedback"}</button></div>
         </form>
       </Modal>}
-      {browseOpen && <Modal title="Browse workspace" onClose={() => setBrowseOpen(false)}>
-        <nav className="browse-list" aria-label="Workspace sections">
-          {NAV.filter(item => !mobileShortcuts.has(item.to)).map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to} onClick={() => setBrowseOpen(false)}><Icon className="ic" />{label}</NavLink>
-          ))}
-          <button onClick={() => { setBrowseOpen(false); setStreakOpen(true); }}><Flame className="ic" />Streak history</button>
-        </nav>
-      </Modal>}
+      {tourBrowse ? createPortal(
+        <section className="dl-tour-browse-panel" aria-hidden="true" inert>
+          <h2>Browse workspace</h2>
+          {browseItems}
+        </section>, document.body
+      ) : browseOpen && <Modal title="Browse workspace" onClose={() => setBrowseOpen(false)}>{browseItems}</Modal>}
       {streakOpen && <Modal title="Streak history" onClose={() => setStreakOpen(false)}>
-          <p>{streak}-day combined streak</p>
+          <details className="streak-count-dropdown"><summary><span><small>Combined streak</small><strong>{streak} days</strong></span><span className="streak-count-disclosure">View all habit timelines <span aria-hidden="true">&#8964;</span></span></summary><StreakTimeline events={streakOverview.data?.events ?? []} habits={streakOverview.data?.habits ?? []} /></details>
           <div className="streak-summary"><div><small>Longest streak</small><b>{streakOverview.data?.longest ?? streak} days</b></div><div><small>Combined update</small><b>{streakOverview.data?.combined.last_update ?? "Today"}</b></div></div>
-          {(streakOverview.data?.habits?.length ?? 0) > 0 && <div className="streak-chart"><b>Individual habit streaks</b><AxisBars compare={false} labels={(streakOverview.data?.habits ?? []).map((habit) => habit.name)} values={(streakOverview.data?.habits ?? []).map((habit) => habit.current)} color="var(--amber)" height={210} yLabel="Current streak (days)" xLabel="Habit" /></div>}
+          {(streakOverview.data?.habits?.length ?? 0) > 0 && <div className="streak-chart"><b>Individual habit streaks</b><AxisBars compare={false} labels={(streakOverview.data?.habits ?? []).map((habit) => habit.name)} values={(streakOverview.data?.habits ?? []).map((habit) => habit.current)} color="var(--amber)" height={210} angledLabels yLabel="Current streak (days)" xLabel="Habit" /></div>}
           <div className="streak-habit-list">
             {(streakOverview.data?.habits ?? []).map((habit) => <div className="streak-habit-row" key={habit.habit_id}><span className="fl"><Flame className="ic" /></span><div><b>{habit.name}</b><small>{habit.current} consecutive days · updated {habit.last_update}</small>{habit.break_date && <small>Last break: {habit.break_date}</small>}</div><strong>{habit.current}</strong></div>)}
             {!streakOverview.data?.habits.length && <div className="streak-empty">Create a habit to start your first streak.</div>}
           </div>
-          <div className="streak-timeline"><b>Streak timeline</b>{(streakOverview.data?.events ?? []).map((event) => <div className="streak-event" key={`${event.habit_id}-${event.event_date}`}><i /><div><b>{event.event_type}</b><small>{event.event_date} · {event.reason || "Updated"}</small></div></div>)}{!streakOverview.data?.events.length && <small>No streak breaks or resumes recorded yet.</small>}</div>
+
       </Modal>}
       {paletteOpen && <Palette onClose={() => setPaletteOpen(false)} />}
       <Toaster />
