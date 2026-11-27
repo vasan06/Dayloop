@@ -1527,18 +1527,13 @@ button:disabled { cursor: not-allowed; }
 .browse-list :is(a,button)>span{min-width:0}
 .release-brand .release-logo-mark{flex:none;display:block;background:none}
 
-/* Deadline count is anchored to the task icon, not the edge of the dock. */
-@media(max-width:900px){
- .rail .nav .task-deadline-badge{position:absolute;top:0;left:calc(50% + 8px);right:auto;margin:0;min-width:16px;height:16px;padding:0 4px;display:flex;align-items:center;justify-content:center;border-radius:99px;background:#bd263d;color:#fff;font:700 9px/1 var(--f-m);box-shadow:0 0 0 2px var(--rail);z-index:3;pointer-events:none}
- .rail .nav.on .task-deadline-badge{top:-13px;box-shadow:0 0 0 2px var(--bg)}
- .rail.dock-browse-open .nav.on .task-deadline-badge{top:0;box-shadow:0 0 0 2px var(--rail)}
-}
-
+/* Deadline indicator: independent of the navigation layout. */
 .deadline-setting{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
 .deadline-setting select{max-width:48%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
 .task-deadline-badge.is-near{background:#a65d00;color:#fff}
+.task-deadline-badge.is-late{background:#b42339;color:#fff}
 @media(max-width:900px){
- .rail .nav .task-deadline-badge{left:calc(50% + 5px);top:2px;min-width:14px;height:14px;max-width:26px;padding:0 3px;font-size:8px;box-sizing:border-box;white-space:nowrap;transform:none}
- .rail .nav.on .task-deadline-badge{top:-12px}
- .rail.dock-browse-open .nav.on .task-deadline-badge{top:2px}
+ .rail .nav .task-deadline-badge{position:absolute;top:5px;left:calc(50% + 6px);right:auto;margin:0;min-width:13px;height:13px;max-width:24px;padding:0 3px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap;font:700 8px/1 var(--f-m);border:1px solid var(--rail);border-radius:7px;box-shadow:none;transform:none;pointer-events:none;z-index:3}
+ .rail .nav.on .task-deadline-badge{top:-9px;border-color:var(--acc)}
+ .rail.dock-browse-open .nav.on .task-deadline-badge{top:5px;border-color:var(--rail)}
 }

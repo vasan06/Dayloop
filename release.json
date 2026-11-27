@@ -1,7 +1,15 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "build": 14,
   "releases": [
+    {
+      "version": "1.1.2",
+      "status": "In development",
+      "changes": [
+        "Refined task deadline indicators in mobile navigation.",
+        "Semantic release versioning and consistent update information."
+      ]
+    },
     {
       "version": "1.1.1",
       "status": "In development",
@@ -29,5 +37,5 @@
       ]
     }
   ],
-  "androidVersionCode": 26
+  "androidVersionCode": 27
 }
