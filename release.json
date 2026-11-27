@@ -1,41 +1,33 @@
 {
-  "version": "1.1.0",
-  "build": 13,
+  "version": "1.1.1",
+  "build": 14,
   "releases": [
     {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "status": "In development",
       "changes": [
-        "Added a visible Update test build label to verify the first in-app upgrade while preserving product version v1.1.0 and Build 13.",
-        "Added Android in-app update detection and GitHub Releases distribution, with release notes, download progress, installation permission handling and retryable errors.",
-        "Added native APK SHA-256, package identity, signing certificate and version verification; HTTPS redirects restricted to GitHub hosts.",
-        "Automated signed APK publishing through a draft release, upload verification and final publication; retained the existing signing identity and reduced temporary artifact retention.",
-        "Added shared product version information, animated DayLoop branding and expandable release history in desktop, mobile and Settings.",
-        "Redesigned the responsive guided tour with Back navigation, spotlight positioning and automatic Browse workspace previews.",
-        "Improved mobile navigation with a sliding active indicator, alphabetically sorted Browse entries and aligned streak history access.",
-        "Added categorized project banner and icon pickers, expanded appearance presets and project appearance browser test coverage.",
-        "Added reusable pagination to finance and transaction lists; improved mobile task row layout.",
-        "Restored dated habit check-ins, measurable inputs, skip and decline flows; reject future entries using habit timezone.",
-        "Improved habit status fallback for older APIs and seven-day insights.",
-        "Expanded server-side streak event history, grouped habit timelines, combined streak details and readable chart labels.",
-        "Added notification tap routing to tasks, projects, habits and calendar; canceled obsolete Focus reminders.",
-        "Removed the Focus workspace, timer, stopwatch and alarm, and updated landing, authentication and navigation references.",
-        "Updated documentation for Android releases, local SQLite data, security and validation.",
-        "Native background notification input, enhanced deadlines, encrypted backup automation, offline streak history and release retention automation remain pending; native updater installation and data preservation are not yet verified."
+        "Task deadline visibility and mobile navigation indicators.",
+        "Consistent product version and build information across application updates.",
+        "Repository maintenance and removal of obsolete development resources."
+      ]
+    },
+    {
+      "version": "1.1.0",
+      "status": "Previous release",
+      "changes": [
+        "Secure in-app Android updates through GitHub Releases.",
+        "Habit history, dated check-ins and streak tracking.",
+        "Guided onboarding, project customization and finance pagination.",
+        "Notification navigation and responsive workspace improvements."
       ]
     },
     {
       "version": "1.0.12",
-      "status": "Previous build",
+      "status": "Previous release",
       "changes": [
-        "Introduced native Google sign-in bridge and Firebase Android signing configuration checks.",
-        "Hardened APK configuration, cleartext traffic and Android backup/data extraction restrictions.",
-        "Improved mobile API authentication, offline mutation synchronization, local data handling and identifier reconciliation.",
-        "Improved backend sync transaction cursors and insights handling; added PostgreSQL sync migration.",
-        "Added authentication smoke tests, mobile sync regression tests and PostgreSQL feed tests.",
-        "Updated Android documentation and internal non-debuggable APK signing workflow."
+        "Native Google authentication, secure APK distribution and offline synchronization improvements."
       ]
     }
   ],
-  "androidVersionCode": 24
+  "androidVersionCode": 26
 }

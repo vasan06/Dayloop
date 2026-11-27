@@ -68,10 +68,6 @@ cypress/videos/
 # Project Storage, Logs & Editor/Tooling
 # ==========================================
 storage/
-docs/
-*.md
-!README.md
-package*.json
 packages/
 *.log
 modifications.txt
@@ -85,3 +81,72 @@ Thumbs.db
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Local Android configuration and signing material
+mobile/android/app/google-services.json
+*.jks
+*.keystore
+*.p12
+
+
+# AI agents and local assistant workspaces
+.copilot/
+.dayloop-agents/
+.agents/
+.agent/
+agents/
+.claude/
+.codex/
+.cursor/
+.windsurf/
+.roo/
+.cline/
+.aider*
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.github/agents/
+.github/prompts/
+.github/instructions/
+.github/copilot-instructions.md
+
+# Local documentation (README files remain eligible for tracking)
+docs/
+doc/
+documentation/
+*.md
+*.mdx
+*.rst
+!README.md
+!**/README.md
+
+# Installed dependencies, package caches and generated distributions
+node_modules/
+vendor/
+.pnpm-store/
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.pip-cache/
+.gradle/
+.cxx/
+out/
+target/
+*.whl
+*.egg
+*.apk
+*.aab
+*.apks
+*.aar
+*.tgz
+*.tar.gz
+*.zip
+*.7z
+
+# Build inputs must remain tracked
+!package.json
+!package-lock.json
+!**/package.json
+!**/package-lock.json
+!release.json
+!**/gradle-wrapper.jar

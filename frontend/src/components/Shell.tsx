@@ -15,7 +15,7 @@ import StreakTimeline from "./StreakTimeline";
 import { apiRequest } from "../lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { isNativeMobile } from "../lib/mobileData";
-import { alertPermission, nativeAlerts, requestAlertPermission, scheduleUpcomingAlerts, showAlert, type AlertPermission } from "../lib/notifications";
+import { alertPermission, deadlinePreferences, taskDeadlineAlerts, nativeAlerts, requestAlertPermission, scheduleUpcomingAlerts, showAlert, type AlertPermission } from "../lib/notifications";
 
 import ReleaseInfo from "./ReleaseInfo";
 
@@ -90,6 +90,9 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
   const [permission, setPermission] = useState<AlertPermission>("default");
+  const [deadlinePrefs, setDeadlinePrefs] = useState(deadlinePreferences);
+  const [deadlineNow, setDeadlineNow] = useState(Date.now);
+  useEffect(() => { const refresh = () => setDeadlinePrefs(deadlinePreferences()); const timer = window.setInterval(() => setDeadlineNow(Date.now()), 30000); window.addEventListener("dayloop:deadline-preferences", refresh); return () => {window.clearInterval(timer);window.removeEventListener("dayloop:deadline-preferences",refresh);}; }, []);
   const delivered = useRef(new Set<string>());
   const [streakOpen, setStreakOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -231,11 +234,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
     checkDue();
     if (nativeAlerts && permission === "granted") {
       const future = [
-        ...(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && task.status !== "completed" && task.status !== "cancelled").map((task) => ({
-          key: `task:${task.id}:${task.due_at}`, title: "Task due", body: task.title, when: Date.parse(task.due_at!),
-          notificationId: notificationCenter.data?.items.find((item) => item.source_type === "task" && item.source_id === task.id)?.id,
-          sourceType: "task" as const, sourceId: task.id,
-        })),
+        ...(notificationCenter.data?.tasks ?? []).filter(task => task.status !== "completed" && task.status !== "cancelled").flatMap(task => taskDeadlineAlerts(task, deadlinePrefs)),
         ...(notificationCenter.data?.events ?? []).map((event) => ({
           key: `event:${event.id}:${event.start_at}`, title: "Calendar event", body: event.title, when: Date.parse(event.start_at),
           sourceType: "event" as const, sourceId: event.id,
@@ -249,7 +248,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
     }
     const timer = window.setInterval(checkDue, 30_000);
     return () => window.clearInterval(timer);
-  }, [identity, notificationCenter.data, permission]);
+  }, [identity, notificationCenter.data, permission, deadlinePrefs]);
 
   async function enableAlerts() {
     try {
@@ -287,7 +286,11 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
 
 
   const streak = streakOverview.data?.combined.current ?? 0;
-  const overdue = (notificationCenter.data?.tasks ?? []).filter((t) => t.status !== "completed" && t.status !== "cancelled" && t.due_at && new Date(t.due_at) < new Date()).length;
+  const deadlineTasks = (notificationCenter.data?.tasks ?? []).filter(t => t.status !== "completed" && t.status !== "cancelled" && t.due_at);
+  const overdue = deadlineTasks.filter(t => Date.parse(t.due_at!) <= deadlineNow).length;
+  const approaching = deadlinePrefs.before ? deadlineTasks.filter(t => Date.parse(t.due_at!) > deadlineNow && Date.parse(t.due_at!) <= deadlineNow + deadlinePrefs.before * 60000).length : 0;
+  const deadlineCount = overdue + approaching;
+  const deadlineLabel = `${overdue} overdue, ${approaching} approaching deadlines`;
   const unreadCount = (notificationCenter.data?.items ?? []).filter((item) => !item.read_at).length;
   const name = profile.data?.username || profile.data?.display_name || "You";
   
@@ -298,8 +301,6 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
     { path: "/budgets", label: "Budgets" },
     { path: "/profile", label: "Profile" },
     { path: "/settings", label: "Settings" },
-    { path: "/states", label: "Application states" },
-    { path: "/responsive", label: "Responsive showcase" },
   ];
   const title = location.pathname.startsWith("/tasks/") ? "Task details"
     : location.pathname.startsWith("/projects/") ? "Project details"
@@ -328,7 +329,7 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
         {NAV.map((n) => (
           <NavLink key={n.to} to={n.to} data-tour={n.label.toLowerCase()} end={"end" in n ? n.end : false} className={({ isActive }) => `nav ${mobileShortcuts.has(n.to) ? "shortcut" : "secondary"} ${isActive ? "on" : ""}`} title={n.label}>
             <n.icon className="ic" /><span className="lab">{n.label}</span>
-            {n.to === "/tasks" && overdue > 0 && <span className="bdg" aria-label={`${overdue} overdue tasks`}>{overdue > 99 ? "99+" : overdue}</span>}
+            {n.to === "/tasks" && deadlineCount > 0 && <span className={`bdg task-deadline-badge ${overdue ? "is-late" : "is-near"}`} title={deadlineLabel} aria-label={deadlineLabel}>{deadlineCount > 99 ? "99+" : deadlineCount}</span>}
 
           </NavLink>
         ))}
@@ -396,16 +397,16 @@ export default function Shell({ onSignOut, identity }: { onSignOut: () => void; 
               {permission !== "granted" && <button className="btn sm" onClick={() => void enableAlerts()}>{nativeAlerts ? "Enable Android notifications" : "Enable browser alerts"}</button>}
               {permission === "denied" && <p className="mute sm">{nativeAlerts ? "If permission was previously denied, open Android Settings → Apps → DayLoop → Notifications to allow alerts." : "Notifications are blocked. Change permission in browser site settings."}</p>}
               <div className="notification-section"><b>Now</b>
-                {(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && new Date(task.due_at) <= new Date()).slice(0, 8).map((task) => <button key={`task-${task.id}`} className="notification-row is-overdue" onClick={() => navigate(`/notification-action?type=task&sourceId=${encodeURIComponent(task.id)}`)}><span className="notification-kind">Due</span><span><b>{task.title}</b><small>{task.due_at ? `Overdue · ${new Date(task.due_at).toLocaleString()}` : "Due now"}</small></span></button>)}
-                {(notificationCenter.data?.upcoming ?? []).filter((job) => job.source_type === "habit" && Date.parse(job.scheduled_at) <= Date.now()).slice(0, 8).map((job) => <button key={`due-habit-${job.id}`} className="notification-row is-overdue" onClick={() => navigate(job.source_id ? `/notification-action?type=habit&sourceId=${encodeURIComponent(job.source_id)}` : "/habits")}><span className="notification-kind">Habit</span><span><b>{job.title}</b><small>{job.body}</small></span></button>)}
+                {(notificationCenter.data?.tasks ?? []).filter((task) => task.due_at && new Date(task.due_at) <= new Date()).slice(0, 8).map((task) => <button key={`task-${task.id}`} className="notification-row is-overdue" onClick={() => navigate(`/tasks/${encodeURIComponent(task.id)}`)}><span className="notification-kind">Due</span><span><b>{task.title}</b><small>{task.due_at ? `Overdue · ${new Date(task.due_at).toLocaleString()}` : "Due now"}</small></span></button>)}
+                {(notificationCenter.data?.upcoming ?? []).filter((job) => job.source_type === "habit" && Date.parse(job.scheduled_at) <= Date.now()).slice(0, 8).map((job) => <button key={`due-habit-${job.id}`} className="notification-row is-overdue" onClick={() => navigate(job.source_id ? `/habits?highlight=${encodeURIComponent(job.source_id)}` : "/habits")}><span className="notification-kind">Habit</span><span><b>{job.title}</b><small>{job.body}</small></span></button>)}
               </div>
               <div className="notification-section"><b>Today</b>
-                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at).toDateString() === new Date().toDateString()).map((event) => <button key={`event-${event.id}`} className="notification-row" onClick={() => navigate(`/notification-action?type=event&sourceId=${encodeURIComponent(event.id)}`)}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleTimeString()}</small></span></button>)}
-                {(notificationCenter.data?.items ?? []).filter((item) => !item.read_at).slice(0, 6).map((item) => <button key={item.id} className="notification-row" onClick={() => navigate(item.source_type === "task" || item.source_type === "habit" ? `/notification-action?id=${item.id}` : item.click_path ?? "/")}><span className="notification-kind">Update</span><span><b>{item.title}</b><small>{item.body}</small></span><span className="notification-dismiss" role="button" aria-label={`Dismiss ${item.title}`} onClick={(event) => { event.stopPropagation(); dismissNotification.mutate(item.id); }}>×</span></button>)}
+                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at).toDateString() === new Date().toDateString()).map((event) => <button key={`event-${event.id}`} className="notification-row" onClick={() => navigate(`/calendar?highlight=${encodeURIComponent(event.id)}`)}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleTimeString()}</small></span></button>)}
+                {(notificationCenter.data?.items ?? []).filter((item) => !item.read_at).slice(0, 6).map((item) => <button key={item.id} className="notification-row" onClick={() => navigate(item.source_type === "task" && item.source_id ? `/tasks/${item.source_id}` : item.source_type === "habit" && item.source_id ? `/habits?highlight=${item.source_id}` : item.source_type === "event" && item.source_id ? `/calendar?highlight=${item.source_id}` : item.click_path ?? "/")}><span className="notification-kind">Update</span><span><b>{item.title}</b><small>{item.body}</small></span><span className="notification-dismiss" role="button" aria-label={`Dismiss ${item.title}`} onClick={(event) => { event.stopPropagation(); dismissNotification.mutate(item.id); }}>×</span></button>)}
               </div>
               <div className="notification-section"><b>Upcoming</b>
                 {(notificationCenter.data?.upcoming ?? []).filter((job) => job.source_type === "habit").slice(0, 8).map((job) => <button key={job.id} className="notification-row" onClick={() => navigate("/habits")}><span className="notification-kind">Habit</span><span><b>{job.title}</b><small>{new Date(job.scheduled_at).toLocaleString()}</small></span></button>)}
-                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at) > new Date()).slice(0, 8).map((event) => <button key={`upcoming-${event.id}`} className="notification-row" onClick={() => navigate(`/notification-action?type=event&sourceId=${encodeURIComponent(event.id)}`)}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleString()}</small></span></button>)}
+                {(notificationCenter.data?.events ?? []).filter((event) => new Date(event.start_at) > new Date()).slice(0, 8).map((event) => <button key={`upcoming-${event.id}`} className="notification-row" onClick={() => navigate(`/calendar?highlight=${encodeURIComponent(event.id)}`)}><span className="notification-kind">Event</span><span><b>{event.title}</b><small>{new Date(event.start_at).toLocaleString()}</small></span></button>)}
               </div>
             </div>}
           </div>
@@ -457,10 +458,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     { id: "settings", label: "Go to Settings", hint: "Account", icon: <Settings className="ic" />, run: go("/settings") },
     { id: "tx", label: "Go to Transactions", hint: "Finance", icon: <Wallet className="ic" />, run: go("/transactions") },
     { id: "bg", label: "Go to Budgets", hint: "Finance", icon: <Wallet className="ic" />, run: go("/budgets") },
-    ...(import.meta.env.DEV ? [
-      { id: "st", label: "Go to Application States", hint: "Testbed", icon: <ArrowUpRight className="ic" />, run: go("/states") },
-      { id: "rs", label: "Go to Responsive Showcase", hint: "Showcase", icon: <ArrowUpRight className="ic" />, run: go("/responsive") },
-    ] : []),
+
     { id: "nt", label: "Create task", hint: "Create", icon: <Plus className="ic" />, run: go("/tasks?new=1") },
     { id: "np", label: "Create project", hint: "Create", icon: <Plus className="ic" />, run: go("/projects?new=1") },
     { id: "ng", label: "Create goal", hint: "Create", icon: <Plus className="ic" />, run: go("/projects?new=goal") },
