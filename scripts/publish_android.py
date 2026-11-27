@@ -12,7 +12,13 @@ repo = os.environ["GITHUB_REPOSITORY"]
 if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
     raise SystemExit("Invalid GitHub repository")
 def gh(*args):
-    return subprocess.check_output(["gh", *args, "--repo", repo], text=True)
+    # Repository view takes the repository as a positional argument.
+    # Release commands instead accept the --repo option.
+    if args[:2] == ("repo", "view"):
+        command = ["gh", "repo", "view", repo, *args[2:]]
+    else:
+        command = ["gh", *args, "--repo", repo]
+    return subprocess.check_output(command, text=True)
 def publish():
     if json.loads(gh("repo", "view", "--json", "visibility"))["visibility"] != "PUBLIC":
         raise SystemExit("Token-free updates require a public release repository.")
