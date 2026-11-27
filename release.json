@@ -6,6 +6,7 @@
       "version": "1.1.0",
       "status": "In development",
       "changes": [
+        "Added a visible Update test build label to verify the first in-app upgrade while preserving product version v1.1.0 and Build 13.",
         "Added Android in-app update detection and GitHub Releases distribution, with release notes, download progress, installation permission handling and retryable errors.",
         "Added native APK SHA-256, package identity, signing certificate and version verification; HTTPS redirects restricted to GitHub hosts.",
         "Automated signed APK publishing through a draft release, upload verification and final publication; retained the existing signing identity and reduced temporary artifact retention.",
@@ -35,5 +36,6 @@
         "Updated Android documentation and internal non-debuggable APK signing workflow."
       ]
     }
-  ]
+  ],
+  "androidVersionCode": 24
 }

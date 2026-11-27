@@ -100,7 +100,7 @@ The publisher requires a public release repository for token-free downloads. The
 - Repository variables: DAYLOOP_API_URL (HTTPS ending in /api/v1), VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_APP_ID, and optional Firebase client variables.
 - Existing repository secret: DAYLOOP_ANDROID_DEBUG_KEYSTORE_BASE64. Preserve and privately back up the exact signing keystore.
 - Optional secret: FIREBASE_ANDROID_JSON_BASE64 for the Android Firebase client configuration.
-- Optional variable: DAYLOOP_VERSION_OFFSET, a fixed offset added to GITHUB_RUN_NUMBER when necessary to ensure new build codes exceed every previously distributed version. Do not reduce the offset.
+- Optional variable: DAYLOOP_VERSION_OFFSET, a fixed offset added to GITHUB_RUN_NUMBER when necessary to ensure new build codes exceed every previously distributed version. Do not reduce the offset. The user-facing build is release.json build (13); androidVersionCode is separate and must increase for APK upgrades.
 
 The application ID is com.dayloop.app. Do not change the signing key or application ID for routine updates. CI uses release.json for product metadata and preserves the semantic product version (currently v1.1.0) and generates the Android version code from the workflow run number plus the configured offset. The native updater verifies SHA-256, package identity, signing certificate and increasing version code before invoking Android's installer. Downloads are limited to HTTPS and approved GitHub hosts, with a 100 MiB APK limit.
 

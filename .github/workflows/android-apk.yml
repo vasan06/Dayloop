@@ -73,8 +73,8 @@ jobs:
           const fs = require('fs');
           const r = JSON.parse(fs.readFileSync('release.json'));
           const code = Number(process.env.GITHUB_RUN_NUMBER) + Number(process.env.VERSION_OFFSET || 0);
-          if (!Number.isSafeInteger(code) || code < r.build || code > 2100000000) throw Error('Set DAYLOOP_VERSION_OFFSET so CI version exceeds all installed builds');
-          r.build = code;
+          if (!Number.isSafeInteger(code) || code < (r.androidVersionCode ?? r.build) || code > 2100000000) throw Error('Set DAYLOOP_VERSION_OFFSET so CI version exceeds all installed builds');
+          r.androidVersionCode = code;
           if (!/^\d+\.\d+\.\d+$/.test(r.version)) throw Error('Invalid semantic product version');
           r.releases[0] = {...r.releases[0], version:r.version, status:'Released'};
           fs.writeFileSync('release.json', JSON.stringify(r,null,2));
@@ -145,7 +145,7 @@ jobs:
         run: |
           apk=mobile/android/app/build/outputs/apk/internal/app-internal.apk
           test "$(apkanalyzer manifest application-id "$apk")" = com.dayloop.app
-          test "$(apkanalyzer manifest version-code "$apk")" = "$(node -p 'require("./release.json").build')"
+          test "$(apkanalyzer manifest version-code "$apk")" = "$(node -p 'require("./release.json").androidVersionCode')"
           test "$(apkanalyzer manifest version-name "$apk")" = "$(node -p 'require("./release.json").version')"
           test "$(apkanalyzer manifest debuggable "$apk")" = false
           signer="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | awk -F': ' '/Signer #1 certificate SHA-1 digest:/ { print toupper($2) }')"

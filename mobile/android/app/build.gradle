@@ -11,7 +11,7 @@ android {
         applicationId "com.dayloop.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode productRelease.build as int
+        versionCode (productRelease.androidVersionCode ?: productRelease.build) as int
         versionName productRelease.version
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

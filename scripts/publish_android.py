@@ -23,7 +23,7 @@ def publish():
     if json.loads(gh("repo", "view", "--json", "visibility"))["visibility"] != "PUBLIC":
         raise SystemExit("Token-free updates require a public release repository.")
     release = json.loads(Path("release.json").read_text(encoding="utf-8"))
-    code = int(release["build"])
+    code = int(release.get("androidVersionCode", release["build"]))
     apk = Path("mobile/android/app/build/outputs/apk/internal/app-internal.apk")
     if not 0 < apk.stat().st_size <= 100 * 1024 * 1024:
         raise SystemExit("APK exceeds native updater size limit")
