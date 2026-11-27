@@ -4,7 +4,7 @@ import { App } from "@capacitor/app";
 import { Download, ShieldCheck } from "lucide-react";
 import { Modal } from "./ui";
 
-type Release = {version_code:number;version_name:string;apk_url:string;sha256:string;notes:string;force_update:boolean;min_supported_code:number};
+type Release = {version_code:number;version_name:string;product_build?:number;apk_url:string;sha256:string;notes:string;force_update:boolean;min_supported_code:number};
 type NativeUpdater = {
   canInstall(): Promise<{allowed:boolean}>;
   openInstallSettings(): Promise<void>;
