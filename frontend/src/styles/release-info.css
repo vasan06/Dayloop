@@ -1,0 +1,49 @@
+.release-trigger{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.release-trigger:hover{color:var(--acc);border-color:var(--acc)}
+.release-trigger:focus-visible,.release-entry-head:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.rail .release-trigger{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.13);color:#d1d6e1}
+.release-dashboard-shortcut{display:none}
+.release-history{display:grid;gap:17px}
+.release-hero{position:relative;overflow:hidden;border-radius:15px;padding:20px;background:linear-gradient(125deg,#172441,#283f79 65%,#4958a8);color:#fff}
+.release-brand{display:flex;align-items:center;gap:9px;font-size:10px;letter-spacing:.1em;font-weight:700;color:#d5e1ff}
+.release-version-line{display:flex;justify-content:space-between;align-items:center;margin:13px 0 10px}
+.release-version-line strong{font-size:36px;line-height:1.1;letter-spacing:-.04em}
+.release-version-line svg{color:#c2d4ff}
+.release-meta{display:flex;flex-wrap:wrap;gap:7px}
+.release-meta span{font-size:11px;padding:4px 9px;border-radius:6px;background:#ffffff18;border:1px solid #ffffff30}
+.release-history-label{display:flex;align-items:center;gap:8px;color:var(--mute)}
+.release-history-label h3{font-size:12px;margin:0;letter-spacing:.04em;text-transform:uppercase}
+.release-timeline{display:grid;gap:9px}
+.release-entry{border:1px solid var(--line);border-radius:11px;background:var(--card);overflow:hidden}
+.release-entry-current{border-color:var(--acc)}
+.release-entry-head{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;background:transparent;border:0;color:var(--ink);padding:13px;cursor:pointer;font:inherit;min-height:48px}
+.release-entry-head span{display:grid;gap:2px}
+.release-entry-head small{font-size:11px;color:var(--mute)}
+.release-entry-head svg{transition:transform .2s ease}
+.release-chevron-open{transform:rotate(180deg)}
+.release-changes{margin:0;padding:0 14px 14px;list-style:none;display:grid;gap:9px}
+.release-changes li{display:flex;align-items:flex-start;gap:9px;font-size:13px;line-height:1.55}
+.release-changes li>span{width:7px;height:7px;margin-top:7px;flex:none;border-radius:2px;background:var(--acc)}
+.release-footer{text-align:center;color:var(--mute);font-size:11px;margin:0}
+@media(max-width:900px){.rail>.release-trigger{display:none}.release-dashboard-shortcut{display:flex;grid-column:1/-1;justify-content:flex-end;align-items:center}.release-trigger-compact{min-height:44px;padding:6px 10px;font-size:11px}}
+@media(prefers-reduced-motion:reduce){.release-entry-head svg{transition:none}}
+
+.workspace-release{flex:none;display:flex;align-items:center}
+.workspace-release .release-trigger{border:0;background:transparent;color:var(--mute);padding:4px 0;gap:4px;font-size:12px;font-weight:600;min-height:36px}
+.workspace-release .release-trigger:hover{color:var(--acc);text-decoration:underline;text-underline-offset:3px}
+.workspace-release .release-trigger svg{width:12px;height:12px}
+@media(max-width:900px){.main>.bar{gap:8px}.workspace-release .release-trigger{font-size:11px;min-height:44px}.main>.bar>.sp2{flex:1;min-width:0}}
+@media(max-width:640px){.main>.bar{gap:5px}.main>.bar>.iconbtn,.main>.bar>div>.iconbtn,.main>.bar>.kbar{width:36px;min-width:36px;padding:0;justify-content:center}.workspace-release .release-trigger{font-size:10px}}
+
+.workspace-release .release-trigger-symbol{display:none}
+@media(max-width:900px){
+ .workspace-release .release-trigger{width:36px;min-width:36px;height:44px;padding:0;justify-content:center;color:var(--ink)}
+ .workspace-release .release-trigger-symbol{display:block;width:19px;height:19px}
+ .workspace-release .release-trigger-label,.workspace-release .release-trigger-arrow{display:none}
+}
+@media(max-width:640px){
+ .main>.bar{flex-wrap:nowrap;gap:3px}
+ .main>.bar>.sp2{min-width:0;flex:1}
+ .main>.bar>.kbar{flex:0 0 36px}
+ .main>.bar>.iconbtn,.main>.bar>div>.iconbtn{flex-shrink:0}
+}

@@ -1,0 +1,55 @@
+
+.project-appearance { display:grid; gap:10px; min-width:0; }
+.project-cover-current { height:94px; border-radius:12px; display:flex; align-items:flex-end; padding:10px; }
+.project-cover-current>span { background:#182027; color:#fff; font-size:11px; padding:5px 9px; border-radius:5px; }
+.project-picker-tabs { display:flex; gap:5px; flex-wrap:wrap; }
+.project-picker-tabs button { border:1px solid var(--line); background:var(--card); color:var(--mute); padding:6px 9px; border-radius:7px; font-size:11px; cursor:pointer; }
+.project-picker-tabs button[aria-pressed=true] { color:var(--acc); border-color:var(--acc); background:var(--acc-soft); }
+.project-cover-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; max-height:320px; overflow:auto; padding:3px; }
+.project-cover-choice { border:0; background:none; color:var(--ink); text-align:left; font-size:11px; display:grid; gap:6px; padding:0; min-width:0; cursor:pointer; }
+.project-cover-sample { display:block; position:relative; aspect-ratio:2.1; border:1px solid var(--line); border-radius:8px; }
+.project-cover-choice[aria-pressed=true] .project-cover-sample { outline:2px solid var(--acc); outline-offset:2px; }
+.project-choice-check { position:absolute; top:5px; right:5px; color:white; background:#233bdb; border-radius:50%; padding:2px; box-sizing:content-box; }
+.project-icon-current { display:flex; align-items:center; gap:9px; color:var(--ink); font-size:13px; }
+.project-icon-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(66px,1fr)); gap:6px; max-height:270px; overflow:auto; padding:3px; }
+.project-icon-grid button { display:grid; justify-items:center; align-content:center; gap:6px; min-height:62px; border:1px solid var(--line); border-radius:8px; padding:6px 3px; color:var(--ink); background:var(--card); cursor:pointer; }
+.project-icon-grid button span { font-size:9px; line-height:1.2; text-align:center; overflow-wrap:anywhere; }
+.project-icon-grid button[aria-pressed=true] { outline:2px solid var(--acc); outline-offset:-2px; background:var(--acc-soft); }
+.project-cover-choice:focus-visible,.project-picker-tabs button:focus-visible,.project-icon-grid button:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+@media(max-width:480px){.project-cover-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.project-icon-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+
+/* Fixed tracks prevent a scrollable grid from squeezing hundreds of icons
+   into its viewport height. Explicit classes avoid generic button resets. */
+.project-appearance .project-picker-tabs .project-picker-tab {
+  flex:0 0 auto; display:inline-flex; align-items:center; min-height:30px;
+  line-height:1.2; font-size:12px; font-weight:500; padding:6px 10px;
+  border:1px solid var(--line); border-radius:7px; background:var(--card); color:var(--mute);
+}
+.project-appearance .project-picker-tab[aria-pressed=true] {
+  border-color:var(--acc); background:var(--acc-soft); color:var(--acc);
+}
+.project-appearance .project-icon-grid {
+  grid-template-columns:repeat(auto-fill,minmax(72px,1fr));
+  grid-auto-rows:76px; align-content:start; align-items:stretch;
+  gap:8px; height:264px; max-height:264px; overflow-y:auto; overflow-x:hidden;
+  overscroll-behavior:contain; scrollbar-gutter:stable; padding:4px;
+}
+.project-appearance .project-icon-grid .project-icon-tile {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  box-sizing:border-box; width:100%; height:76px; min-height:76px; min-width:0;
+  gap:6px; padding:7px 4px; overflow:hidden; border:1px solid var(--line);
+  border-radius:8px; background:var(--card); color:var(--ink); box-shadow:none;
+}
+.project-icon-tile>svg { flex:0 0 22px; width:22px; height:22px; }
+.project-appearance .project-icon-tile>span {
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
+  overflow:hidden; font-size:10px; line-height:12px; max-height:24px;
+  overflow-wrap:anywhere; text-align:center;
+}
+.project-appearance .project-icon-tile[aria-pressed=true] {
+  border-color:var(--acc); background:var(--acc-soft); color:var(--acc);
+}
+.project-appearance .project-cover-grid { align-content:start; grid-auto-rows:max-content; overscroll-behavior:contain; }
+@media(max-width:480px) {
+  .project-appearance .project-icon-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+}

@@ -1,6 +1,7 @@
 import { createContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { CalendarDays, CheckCircle2, Eye, EyeOff, Flame, Target, TimerReset } from "lucide-react";
 import Landing from "./Landing";
+import GuidedTour, { type TourStep } from "../components/GuidedTour";
 import { Logo } from "../components/Shell";
 import { Modal } from "../components/ui";
 import {
@@ -84,38 +85,6 @@ const roleOptions = [
 ];
 
 export const ReplayTour = createContext<() => void>(() => {});
-
-type TourStep = { title: string; body: string; target: string };
-
-function GuidedTour({ step, index, total, busy, error, onNext, onSkip }: {
-  step: TourStep; index: number; total: number; busy: boolean; error: string;
-  onNext: () => void; onSkip: () => void;
-}) {
-  const [rect, setRect] = useState<DOMRect | null>(null);
-  useEffect(() => {
-    const update = () => {
-      const element = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
-      if (!element) { setRect(null); return; }
-      element.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
-      window.setTimeout(() => setRect(element.getBoundingClientRect()), 180);
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [step.target]);
-
-  const cardLeft = rect ? Math.min(window.innerWidth - 350, Math.max(18, rect.right + 18)) : 24;
-  const cardTop = rect ? Math.min(window.innerHeight - 230, Math.max(18, rect.top - 16)) : 90;
-  return <div className="tour-guide-layer" role="dialog" aria-modal="true" aria-label={step.title}>
-    {rect && <div className="tour-spotlight" style={{ left: rect.left - 7, top: rect.top - 7, width: rect.width + 14, height: rect.height + 14 }} />}
-    <section className="tour-callout" style={{ left: cardLeft, top: cardTop }}>
-      <div className="mono">DayLoop tour · {index + 1}/{total}</div>
-      <h2>{step.title}</h2><p>{step.body}</p>
-      {error && <p className="err">{error}</p>}
-      <div className="tour-actions"><button className="btn ghost" disabled={busy} onClick={onSkip}>Skip</button><div className="sp" /><button className="btn pri" disabled={busy} onClick={onNext}>{index === total - 1 ? "Finish" : "Next"}</button></div>
-    </section>
-  </div>;
-}
 
 type Mode = "landing" | "signin" | "signup" | "forgot";
 
@@ -370,13 +339,13 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
 
             <div className="auth-growth-stats">
               <div><span className="auth-stat-icon"><Flame /></span><strong>4 / 5</strong><small>habits kept</small></div>
-              <div><span className="auth-stat-icon"><TimerReset /></span><strong>50m</strong><small>focused today</small></div>
+              <div><span className="auth-stat-icon"><TimerReset /></span><strong>3</strong><small>tasks today</small></div>
               <div><span className="auth-stat-icon"><Target /></span><strong>2 / 3</strong><small>priorities done</small></div>
             </div>
 
             <div className="auth-focus-block">
               <time>14:30</time>
-              <div><b>Design review</b><span>Protected focus block · 45 min</span></div>
+              <div><b>Design review</b><span>Calendar event · 45 min</span></div>
             </div>
           </section>
 
@@ -416,8 +385,8 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
         { title: "Dashboard", body: "Your daily overview lives here: priorities, progress and the next things that need attention.", target: "dashboard" },
         { title: "Tasks", body: "Capture work, set due times and move each task toward completion.", target: "tasks" },
         { title: "Habits", body: "This is the habit hub. Check in, review streaks and open each habit's activity heatmap.", target: "habits" },
-        { title: "Focus", body: "Start a focus timer, stopwatch or alarm without leaving your workspace.", target: "focus" },
         { title: "Projects", body: "Group related tasks into outcomes and track project progress.", target: "projects" },
+        { title: "Trackers", body: "Track personal measurements and review your progress over time.", target: "trackers" },
         { title: "Finance", body: "Record income and expenses, then compare trends and budgets.", target: "finance" },
         { title: "Notes", body: "Write long structured pages with blocks, slash commands and automatic saving.", target: "notes" },
         { title: "Calendar", body: "Plan events and deadlines alongside your tasks.", target: "calendar" },
@@ -452,6 +421,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
           total={tourSteps.length}
           busy={busy}
           error={error}
+          onBack={() => setTourStep(current => Math.max(0, current - 1))}
           onSkip={() => void finishTour()}
           onNext={() => tourStep === tourSteps.length - 1 ? void finishTour() : setTourStep((current) => current + 1)}
         />
@@ -478,7 +448,7 @@ export default function AuthGate({ children }: { children: (signOut: () => void,
 
   if (mode === "signup") return shell(<form className="auth-form auth-form-signup" onSubmit={submitAuth}>
     {brand}<div className="signup-intro"><div className="mono auth-kicker">NEW WORKSPACE</div><h1 className="auth-title">Start with a clean loop.</h1><p className="auth-description">Create the account first. Username, role and profile details come next—after your email and password are secured.</p></div>
-    <div className="signup-benefits"><span>Tasks + projects</span><span>Habits + focus</span><span>Notes + finance</span></div>{configWarning}
+    <div className="signup-benefits"><span>Tasks + projects</span><span>Habits + trackers</span><span>Notes + finance</span></div>{configWarning}
     <div className="field"><label htmlFor="signup-email">Email</label><input id="signup-email" type="email" autoComplete="email" required value={email} onChange={(e)=>setEmail(e.target.value)}/></div>
     <div className="field auth-password-field"><label htmlFor="signup-pw">Create password</label><div className="pw"><input id="signup-pw" type={showPw?"text":"password"} autoComplete="new-password" minLength={8} required value={password} onChange={(e)=>setPassword(e.target.value)}/><button type="button" aria-label={showPw?"Hide password":"Show password"} onClick={()=>setShowPw((s)=>!s)}>{showPw?<EyeOff className="ic"/>:<Eye className="ic"/>}</button></div><div className="auth-strength"><div className={`meter s${strength}`}><i/><i/><i/><i/></div><small>{strength<2?"Use 8+ characters and mix letter types":strength<4?"Good start — add a number or symbol":"Strong password"}</small></div></div>
     <div className="field auth-password-field"><label htmlFor="signup-confirm">Confirm password</label><div className={`pw ${confirmPassword?passwordMatches?"is-match":"is-mismatch":""}`}><input id="signup-confirm" type={showConfirmPw?"text":"password"} autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(e)=>setConfirmPassword(e.target.value)}/><button type="button" aria-label={showConfirmPw?"Hide confirmation password":"Show confirmation password"} onClick={()=>setShowConfirmPw((s)=>!s)}>{showConfirmPw?<EyeOff className="ic"/>:<Eye className="ic"/>}</button></div><small className={confirmPassword?passwordMatches?"auth-match-good":"auth-match-bad":"auth-match-neutral"}>{confirmPassword?passwordMatches?"Passwords match":"Passwords do not match yet":"Repeat the password to confirm."}</small></div>

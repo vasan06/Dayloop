@@ -53,23 +53,23 @@ export default function Tasks() {
       <PageHead title="Tasks" sub={`${counts.open} open · ${counts.done} completed`}>
         <button className="btn pri" onClick={showNew}><Plus className="ic" />New task</button>
       </PageHead>
-      <Card>
-        <div className="row wrap" style={{ marginBottom: 12 }}>
+      <Card className="task-list-card">
+        <div className="row wrap task-filter-bar" style={{ marginBottom: 12 }}>
           <div className="tabs" style={{ margin: 0 }}>{(["open", "today", "overdue", "done", "all"] as Tab[]).map((k) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{k[0].toUpperCase() + k.slice(1)} <span className="num">{counts[k]}</span></button>)}</div>
-          <div style={{ flex: 1 }} />
+          <div className="task-filter-spacer" style={{ flex: 1 }} />
           <select className="btn" aria-label="Filter by project" value={project} onChange={(e) => setProject(e.target.value)}><option value="">All projects</option>{(projects.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
           <label className="search"><Search className="ic" /><input placeholder="Filter tasks" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter tasks" /></label>
         </div>
         {tasks.isLoading ? <Skeleton rows={5} /> : tasks.isError ? <ErrorBox error={tasks.error} retry={() => void tasks.refetch()} /> : shown.length === 0 ? (
           <Empty title={all.length ? "Nothing here" : "No tasks yet"} hint={all.length ? "Try another filter." : "Capture your first task — it takes two seconds."} />
         ) : <div className="list">{shown.map((t) => (
-          <div key={t.id} className={`li ${t.status === "completed" ? "done" : ""}`}>
+          <div key={t.id} className={`li task-list-row ${t.status === "completed" ? "done" : ""}`}>
             <Check22 on={t.status === "completed"} label={`Toggle ${t.title}`} onClick={() => { const completing=t.status !== "completed"; update.mutate({ id: t.id, status: completing ? "completed" : "not_started" }, { onSuccess: () => { if (completing) confetti(); } }); }} />
-            <Link to={`/tasks/${t.id}`} className="t lnk" style={{ textDecoration: "none", color: "inherit", padding: 0 }}><b>{t.title}</b>{projectName(t.project_id) && <span className="mute sm"> · {projectName(t.project_id)}</span>}</Link>
-            <span className={`pill ${PRI_CLASS[t.priority]}`}>{priorityLabel[t.priority]}</span>
-            {t.due_at && <span className={`pill ${isOverdue(t) ? "hi" : ""}`}>{shortDate(t.due_at)}</span>}
-            <button className="iconbtn" style={{ width: 32, height: 32 }} aria-label={`Edit ${t.title}`} onClick={() => setEditing(t)}><Edit2 className="ic" style={{ width: 14, height: 14 }} /></button>
-            <button className="iconbtn" style={{ width: 32, height: 32 }} aria-label={`Delete ${t.title}`} onClick={() => setDeleting(t)}><Trash2 className="ic" style={{ width: 15, height: 15 }} /></button>
+            <Link to={`/tasks/${t.id}`} className="t lnk task-list-title" style={{ textDecoration: "none", color: "inherit", padding: 0 }}><b>{t.title}</b>{projectName(t.project_id) && <span className="mute sm">{projectName(t.project_id)}</span>}</Link>
+            <div className="task-list-meta"><span className={`pill ${PRI_CLASS[t.priority]}`}>{priorityLabel[t.priority]}</span>
+            {t.due_at && <span className={`pill ${isOverdue(t) ? "hi" : ""}`}>{shortDate(t.due_at)}</span>}</div>
+            <div className="task-list-actions"><button className="iconbtn" style={{ width: 32, height: 32 }} aria-label={`Edit ${t.title}`} onClick={() => setEditing(t)}><Edit2 className="ic" style={{ width: 14, height: 14 }} /></button>
+            <button className="iconbtn" style={{ width: 32, height: 32 }} aria-label={`Delete ${t.title}`} onClick={() => setDeleting(t)}><Trash2 className="ic" style={{ width: 15, height: 15 }} /></button></div>
           </div>
         ))}</div>}
       </Card>

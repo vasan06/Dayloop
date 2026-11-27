@@ -20,7 +20,7 @@ export default function Landing({ onSignIn, onSignUp }: { onSignIn: () => void; 
         <header>
           <div className="welcome-kicker">YOUR DAY, CONNECTED</div>
           <h1>Plan less.<br />Move more.</h1>
-          <p>Tasks, habits, focus, notes, calendar and personal finance in one workspace that makes progress visible.</p>
+          <p>Tasks, habits, notes, calendar and personal finance in one workspace that makes progress visible.</p>
           <div className="welcome-cta"><button className="btn pri" onClick={onSignUp}>Create your workspace <ArrowUpRight aria-hidden="true" /></button><a className="btn ghost" href="#workspace">See the workspace</a></div>
           <div className="welcome-proof"><span><b>1</b> workspace</span><span><b>6+</b> connected tools</span><span><b>0</b> tab chaos</span></div>
         </header>
@@ -43,7 +43,7 @@ export default function Landing({ onSignIn, onSignUp }: { onSignIn: () => void; 
               ))}</ul>
               <div className="planner-mini-grid">
                 <div><Repeat /><span><b>4/5</b><small>habits checked</small></span></div>
-                <div><TimerReset /><span><b>50m</b><small>focused today</small></span></div>
+                <div><TimerReset /><span><b>3</b><small>tasks today</small></span></div>
               </div>
               <div className="planner-appointment"><time>14:30</time><div><b>Design review</b><small>Calendar · 45 minutes</small></div><span className="planner-appointment-tag">45m</span></div>
             </div>
@@ -53,12 +53,11 @@ export default function Landing({ onSignIn, onSignUp }: { onSignIn: () => void; 
 
       <section className="welcome-band" id="workspace">
         <div><span className="mono">ONE LOOP</span><h2>Everything updates the same picture of your day.</h2></div>
-        <p>Finish a task, check in a habit, complete a focus session or record spending. DayLoop keeps those signals together instead of scattering them across separate apps.</p>
+        <p>Finish a task, check in a habit, plan an event or record spending. DayLoop keeps those signals together instead of scattering them across separate apps.</p>
       </section>
 
       <section className="welcome-tools" aria-label="Workspace features">
         <article className="feature-wide"><Repeat /><h2>Habits + streaks</h2><p>Track positive and avoidance habits, expand heatmaps only when you need them, and compare individual streaks.</p></article>
-        <article><TimerReset /><h2>Focus</h2><p>Timer, stopwatch and alarm with browser alerts and snooze.</p></article>
         <article><NotebookPen /><h2>Notes</h2><p>Long-form block writing with slash commands and automatic saving.</p></article>
         <article><Wallet /><h2>Finance</h2><p>Record income and expenses, then compare trends and budgets.</p></article>
         <article><BarChart3 /><h2>Analytics</h2><p>Interactive charts across tasks, habits and money.</p></article>

@@ -1,3 +1,4 @@
+import { TablePagination, useTablePagination } from "../components/TablePagination";
 import TransactionForm from "../components/TransactionForm";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -78,6 +79,8 @@ export default function Transactions() {
       })
       .sort((a, b) => (b.transaction_date ?? "").localeCompare(a.transaction_date ?? ""));
   }, [allTxs, currency, tab, selectedCat, searchQuery, catMap]);
+
+  const pagination = useTablePagination(filtered, JSON.stringify([currency, tab, selectedCat, searchQuery]));
 
   return (
     <>
@@ -187,7 +190,7 @@ export default function Transactions() {
             }
           />
         ) : (
-          <div className="tw">
+          <><div className="tw">
             <table>
               <thead>
                 <tr>
@@ -199,7 +202,7 @@ export default function Transactions() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((t) => {
+                {pagination.rows.map((t) => {
                   const isInc = t.transaction_type === "income";
                   const catName = catMap.get(t.category_id ?? "") ?? "Uncategorised";
                   return (
@@ -239,7 +242,7 @@ export default function Transactions() {
                 })}
               </tbody>
             </table>
-          </div>
+          </div><TablePagination {...pagination} /></>
         )}
       </Card>
 

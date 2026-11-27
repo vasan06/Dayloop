@@ -68,15 +68,18 @@ export function changeText(values: number[], index: number, labels: string[], fo
 type TrendProps = {
   labels: string[]; series: Series[]; height?: number; format?: Format; axisFormat?: Format;
   yLabel?: string; xLabel?: string; compare?: boolean; bar?: boolean;
-  spark?: boolean; width?: number; details?: (string | null | undefined)[];
+  spark?: boolean; width?: number; angledLabels?: boolean; details?: (string | null | undefined)[];
 };
 
 function TrendChart({ labels, series, height = 210, width = 620, format = numberFormat, axisFormat = format,
-  yLabel = "Completions", xLabel = "Date", compare = true, bar = false, spark = false, details }: TrendProps) {
+  yLabel = "Completions", xLabel = "Date", compare = true, bar = false, spark = false, details, angledLabels = false }: TrendProps) {
   const names = series.map(item => item.name);
   const state = useChartSelection(labels, names);
   if (!labels.length || !series.length) return <span className="sm mute">No observations yet.</span>;
-  const left = spark ? 4 : 62, right = spark ? 4 : 26, top = spark ? 5 : 14, bottom = spark ? 5 : 43;
+  const labelLength = Math.max(0, ...labels.map(label => label.length));
+  const extra = angledLabels && !spark ? Math.ceil(labelLength * 6 * Math.sin(Math.PI / 4)) + 24 : 0;
+  if (angledLabels && !spark) { width = Math.max(width, labels.length * 58 + 100); height += extra; }
+  const left = spark ? 4 : 62, right = spark ? 4 : angledLabels ? Math.max(26, extra) : 26, top = spark ? 5 : 14, bottom = spark ? 5 : 43 + extra;
   const plotW = width - left - right, plotH = height - top - bottom;
   const values = series.flatMap(item => item.values);
   const min = Math.min(0, ...values);
@@ -91,7 +94,7 @@ function TrendChart({ labels, series, height = 210, width = 620, format = number
   const offset = bar || labels.length === 1 ? plotW / (bar ? slots : 1) / 2 : 0;
   const x = (i: number) => left + offset + i * plotW / slots;
   const y = (v: number) => top + (ceiling - v) / (ceiling - floor || 1) * plotH;
-  const interval = Math.max(1, Math.ceil(labels.length / (width < 400 ? 5 : 7)));
+  const interval = angledLabels ? 1 : Math.max(1, Math.ceil(labels.length / (width < 400 ? 5 : 7)));
   const selected = state.selected;
   const focus = state.active;
   const show = series.filter(item => !focus || item.name === focus);
@@ -113,7 +116,7 @@ function TrendChart({ labels, series, height = 210, width = 620, format = number
 
   return <div className={spark ? "plot plot-spark" : "plot"}>
     {!spark && <ChartLegend items={series} active={focus} onToggle={state.toggle} />}
-    <svg className={spark ? "spark-plot" : "chart axis-chart"} viewBox={`0 0 ${width} ${height}`}
+    <div className={angledLabels ? "angled-chart-scroll" : undefined}><svg style={angledLabels ? { minWidth: width, width: "100%" } : undefined} className={spark ? "spark-plot" : "chart axis-chart"} viewBox={`0 0 ${width} ${height}`}
       width={spark ? width : undefined} height={spark ? height : undefined}
       role="slider" tabIndex={0} aria-label={`${names.join(" and ")} by ${xLabel}. Use left and right arrows to explore.`}
       aria-valuemin={1} aria-valuemax={labels.length} aria-valuenow={(selected ?? 0) + 1}
@@ -125,7 +128,7 @@ function TrendChart({ labels, series, height = 210, width = 620, format = number
           <text x={left - 6} y={y(v) + 3} textAnchor="end">{axisFormat(v)}</text></g>;
       })}
       {!spark && labels.map((label, i) => i % interval === 0 || i === labels.length - 1 && (i % interval > interval / 2) ?
-        <text key={i} x={x(i)} y={height - 22} textAnchor="middle">{label}</text> : null)}
+        <text key={i} x={x(i)} y={angledLabels ? height - bottom + 12 : height - 22} textAnchor={angledLabels ? "start" : "middle"} transform={angledLabels ? `rotate(45 ${x(i)} ${height - bottom + 12})` : undefined}>{label}</text> : null)}
       {!spark && <text className="axis-title" x={left + plotW / 2} y={height - 4} textAnchor="middle">{xLabel}</text>}
       {!spark && <text className="axis-title" x={12} y={top + plotH / 2} textAnchor="middle" transform={`rotate(-90 12 ${top + plotH / 2})`}>{yLabel}</text>}
       {selected !== null && <line className="chart-select-line" x1={x(selected)} x2={x(selected)} y1={top} y2={height - bottom} />}
@@ -141,7 +144,7 @@ function TrendChart({ labels, series, height = 210, width = 620, format = number
             r={spark ? 2.5 : 4} fill={item.color} stroke="var(--card)" strokeWidth={1} />}
         </>}
       </g>)}
-    </svg>
+    </svg></div>
     {selected !== null && <ChartDetail title={labels[selected]} clear={state.clear}>
       {show.map(item => <p key={item.name}><b>{item.name} · {format(item.values[selected])}</b>
         {compare && <span>{changeText(item.values, selected, labels, format)}</span>}{item.details?.[selected] && <span>{item.details[selected]}</span>}</p>)}

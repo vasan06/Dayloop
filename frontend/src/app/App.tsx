@@ -8,11 +8,11 @@ import { registerNotificationActions } from "../lib/notifications";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import AuthGate from "./AuthGate";
 import Shell from "../components/Shell";
+import AndroidUpdate from "../components/AndroidUpdate";
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Tasks = lazy(() => import("../pages/Tasks"));
 const Projects = lazy(() => import("../pages/Projects"));
 const Habits = lazy(() => import("../pages/Habits"));
-const Focus = lazy(() => import("../pages/Focus"));
 const Finance = lazy(() => import("../pages/Finance"));
 const Notes = lazy(() => import("../pages/Notes"));
 const Calendar = lazy(() => import("../pages/Calendar"));
@@ -97,6 +97,8 @@ export default function App() {
   }, [navigate]);
   if (location.pathname.startsWith("/admin")) return <Suspense fallback={<div className="boot">Opening admin…</div>}><Admin /></Suspense>;
   return (
+    <>
+    <AndroidUpdate />
     <AuthGate>
       {(signOut, identity) => (
         <WorkspaceSession key={identity}>
@@ -109,7 +111,6 @@ export default function App() {
             <Route path="projects" element={<Projects />} />
             <Route path="projects/:id" element={<ProjectDetail />} />
             <Route path="habits" element={<Habits />} />
-            <Route path="focus" element={<Focus />} />
             <Route path="trackers" element={<Trackers />} />
             <Route path="finance" element={<Finance />} />
             <Route path="transactions" element={<Transactions />} />
@@ -127,5 +128,6 @@ export default function App() {
         </WorkspaceSession>
       )}
     </AuthGate>
+    </>
   );
 }

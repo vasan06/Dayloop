@@ -3,22 +3,29 @@ name: Android Internal APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, build-12]
+    branches: [main]
     paths:
       - 'frontend/**'
       - 'mobile/**'
       - 'package.json'
       - 'package-lock.json'
+      - 'release.json'
+      - 'scripts/publish_android.py'
       - '.github/workflows/android-apk.yml'
 
+concurrency:
+  group: dayloop-android-publish
+  cancel-in-progress: false
+
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
+      VITE_RELEASE_REPOSITORY: ${{ github.repository }}
       VITE_API_URL: ${{ vars.DAYLOOP_API_URL }}
       VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
       VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
@@ -58,6 +65,20 @@ jobs:
               exit 1
             fi
           done
+      - name: Set monotonic release version
+        env:
+          VERSION_OFFSET: ${{ vars.DAYLOOP_VERSION_OFFSET }}
+        run: |
+          node - <<'JS'
+          const fs = require('fs');
+          const r = JSON.parse(fs.readFileSync('release.json'));
+          const code = Number(process.env.GITHUB_RUN_NUMBER) + Number(process.env.VERSION_OFFSET || 0);
+          if (!Number.isSafeInteger(code) || code < r.build || code > 2100000000) throw Error('Set DAYLOOP_VERSION_OFFSET so CI version exceeds all installed builds');
+          r.build = code;
+          if (!/^\d+\.\d+\.\d+$/.test(r.version)) throw Error('Invalid semantic product version');
+          r.releases[0] = {...r.releases[0], version:r.version, status:'Released'};
+          fs.writeFileSync('release.json', JSON.stringify(r,null,2));
+          JS
       - name: Build existing React frontend
         run: npm run build
       - name: Install Capacitor dependencies
@@ -124,7 +145,8 @@ jobs:
         run: |
           apk=mobile/android/app/build/outputs/apk/internal/app-internal.apk
           test "$(apkanalyzer manifest application-id "$apk")" = com.dayloop.app
-          test "$(apkanalyzer manifest version-code "$apk")" = 12
+          test "$(apkanalyzer manifest version-code "$apk")" = "$(node -p 'require("./release.json").build')"
+          test "$(apkanalyzer manifest version-name "$apk")" = "$(node -p 'require("./release.json").version')"
           test "$(apkanalyzer manifest debuggable "$apk")" = false
           signer="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | awk -F': ' '/Signer #1 certificate SHA-1 digest:/ { print toupper($2) }')"
           test "$signer" = "$ANDROID_SIGNING_SHA1"
@@ -134,4 +156,10 @@ jobs:
           name: dayloop-android-debug-apk
           path: mobile/android/app/build/outputs/apk/internal/app-internal.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
+
+      - name: Publish verified APK and release metadata
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish_android.py

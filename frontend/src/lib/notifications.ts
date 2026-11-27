@@ -99,17 +99,18 @@ export async function registerNotificationActions(onOpen: (path: string) => void
       { id: "snooze", title: "Later", foreground: true },
       { id: "clear", title: "Clear", foreground: true },
     ] },
-    { id: "dayloop-focus", actions: [
-      { id: "clear", title: "Clear", foreground: true },
-      { id: "snooze", title: "Snooze", foreground: true },
-    ] },
   ] });
+  const obsolete = (await LocalNotifications.getPending()).notifications.filter(item => item.extra?.focus === true);
+  if (obsolete.length) await LocalNotifications.cancel({ notifications: obsolete.map(({ id }) => ({ id })) });
   const listener = await LocalNotifications.addListener("localNotificationActionPerformed", ({ actionId, notification }) => {
     const extra = notification.extra ?? {};
-    if (extra.focus === true) {
-      const chosen = actionId === "clear" || actionId === "snooze" ? actionId : "clear";
-      onOpen(`/notification-action?type=focus&action=${chosen}`);
-      return;
+    if (extra.focus === true) return;
+    if (actionId === "tap") {
+      const id = typeof extra.sourceId === "string" ? encodeURIComponent(extra.sourceId) : "";
+      if (extra.sourceType === "task" && id) { onOpen("/tasks/" + id); return; }
+      if (extra.sourceType === "project" && id) { onOpen("/projects/" + id); return; }
+      if (extra.sourceType === "habit" && id) { onOpen("/habits?highlight=" + id); return; }
+      if (extra.sourceType === "event" && id) { onOpen("/calendar?highlight=" + id); return; }
     }
     const values = new URLSearchParams();
     if (typeof extra.notificationId === "string") values.set("id", extra.notificationId);
@@ -144,22 +145,6 @@ export async function scheduleUpcomingAlerts(items: UpcomingAlert[]): Promise<vo
   });
 }
 
-/** Schedule focus/alarms with Android's OS rather than relying on WebView timers. */
-export async function scheduleFocusReminder(key: string, at: number, title: string, body: string): Promise<void> {
-  if (!nativeAlerts || at <= Date.now()) return;
-  if (await alertPermission() !== "granted") return;
-  const sound = await soundSettings();
-  await LocalNotifications.cancel({ notifications: [{ id: alertId("focus:" + key) }] });
-  await LocalNotifications.schedule({
-    notifications: [{
-      id: alertId("focus:" + key),
-      title, body, ...sound, foreground: true,
-      actionTypeId: "dayloop-focus",
-      extra: { dayloop: true, focus: true, focusKey: key },
-      schedule: { at: new Date(at), allowWhileIdle: true },
-    }],
-  });
-}
 export async function scheduleHabitSnooze(habitId: string, at: number): Promise<void> {
   if (!nativeAlerts) throw new Error("Background snooze is available in the Android app.");
   if (await alertPermission() !== "granted") throw new Error("Enable DayLoop notifications before snoozing.");
@@ -170,8 +155,4 @@ export async function scheduleHabitSnooze(habitId: string, at: number): Promise<
     extra: { dayloop: true, sourceType: "habit", sourceId: habitId },
     schedule: { at: new Date(at), allowWhileIdle: true }, isExactNotification: false,
   }] });
-}
-export async function cancelFocusReminder(key: string): Promise<void> {
-  if (!nativeAlerts) return;
-  await LocalNotifications.cancel({ notifications: [{ id: alertId("focus:" + key) }] });
 }
