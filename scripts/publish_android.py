@@ -48,9 +48,17 @@ def publish():
         if not any(asset["name"] == "DayLoop.apk" for asset in info["assets"]):
             continue
         match = re.search(r"<!-- dayloop-update:\s*(.*?)\s*-->", info["body"], re.S)
-        if not match:
-            raise SystemExit(f"Missing update metadata on {old_tag}; restore it before publishing.")
-        previous = json.loads(match.group(1))
+        if match:
+            previous = json.loads(match.group(1))
+        else:
+            with tempfile.TemporaryDirectory() as legacy:
+                gh("release", "download", old_tag, "--pattern", "update.json", "--dir", legacy)
+                previous = json.loads((Path(legacy) / "update.json").read_text(encoding="utf-8"))
+        if m := re.fullmatch(r"android-(\d+)", old_tag):
+            if int(previous["version_code"]) != int(m.group(1)):
+                raise SystemExit(f"Version code mismatch on {old_tag}")
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", previous["sha256"]):
+            raise SystemExit(f"Invalid APK checksum on {old_tag}")
         codes.append(int(previous["version_code"]))
         versions.append(tuple(map(int, previous["version_name"].split("."))))
     if codes and code <= max(codes):
@@ -61,7 +69,7 @@ def publish():
     notes = "\n".join(release["releases"][0]["changes"])
     row = dict(version_code=code,version_name=release["version"],product_build=release["build"],apk_url=f"https://github.com/{repo}/releases/download/{tag}/DayLoop.apk",
         sha256=sha,notes=notes,force_update=False,min_supported_code=1)
-    body = "## What is new\n\n" + "\n".join("- " + line for line in notes.splitlines()) + "\n\n<!-- dayloop-update: " + json.dumps(row, ensure_ascii=True).replace("--","\u002d\u002d") + " -->\n"
+    body = "## What is new\n\n" + "\n".join("- " + line for line in notes.splitlines()) + "\n\n<!-- dayloop-update: " + json.dumps(row, ensure_ascii=True).replace("--","\\u002d\\u002d") + " -->\n"
     with tempfile.TemporaryDirectory() as directory:
         folder=Path(directory)
         shutil.copyfile(apk, folder/"DayLoop.apk")
